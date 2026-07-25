@@ -94,7 +94,14 @@ export function ConnectionProvider({
 						timestamp?: number
 					}
 					if (parsed.type === "pong" && parsed.timestamp) {
-						setLatency(Date.now() - parsed.timestamp)
+						const ms = Date.now() - parsed.timestamp
+						setLatency(ms)
+						// Report measured RTT to the host debug dashboard (best-effort)
+						fetch("/api/debug/report-latency", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ latencyMs: ms }),
+						}).catch(() => {})
 					}
 				} catch {}
 			}

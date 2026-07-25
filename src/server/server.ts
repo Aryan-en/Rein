@@ -1,172 +1,292 @@
-/**
- * Routing and signaling engine setup.
- */
-
 import type { IncomingMessage, ServerResponse } from "node:http"
+import os from "node:os"
+import { Transform } from "node:stream"
 import logger from "../utils/logger"
-import { reinStorage } from "./api/apiState"
+import winston from "winston"
 import {
-	handleCreateSession,
-	handleGetSession,
-	handleDeleteSession,
-	handleOffer,
-	handleAnswer,
-	handleIce,
-	handleEvents,
-	handleHostStart,
-	handleHostStop,
-	handleHostStatus,
-	handleInputOffer,
-	handleGenerateToken,
-	handleGetToken,
-	handleGstSignalingGateway,
-	handleWhipSignalingExchange,
-	handleGetIp,
-	handleUpdateConfig,
-	json,
-} from "./api/apiHandlers"
+	getActiveToken,
+	generateToken,
+	storeToken,
+	isKnownToken,
+} from "./tokenStore"
+import { GstManager } from "./gstreamer/gstManager"
+import { WebRTCManager } from "./webRTC"
+import type { InputConfig } from "./types"
 
-interface Route {
-	method: string
-	pattern: RegExp
-	handler: (
+let gstManager: GstManager | null = null
+let webrtcManager: WebRTCManager | null = null
+let hostStatus: "stopped" | "starting" | "running" | "error" = "stopped"
+/** Latest RTT reported by the connected client (phone). Updated via POST /api/debug/report-latency. */
+let lastReportedLatencyMs: number | null = null
+
+// ── SSE log fan-out ───────────────────────────────────────────────────────────
+// A set of active SSE response streams. Each GET /api/debug/logs subscriber
+// gets added here and removed on close/error.
+const sseClients = new Set<ServerResponse>()
+
+/** Custom Winston transport that pushes every log line to SSE subscribers. */
+class SseTransport extends winston.transports.Stream {
+	constructor() {
+		const passthrough = new Transform({
+			objectMode: true,
+			transform(chunk, _enc, cb) {
+				this.push(chunk)
+				cb()
+			},
+		})
+		super({ stream: passthrough })
+		passthrough.on("data", (info: Record<string, unknown>) => {
+			const payload = `data: ${JSON.stringify({
+				timestamp: info.timestamp ?? new Date().toISOString(),
+				level: String(info.level ?? "info").toUpperCase(),
+				message: String(info.message ?? ""),
+			})}\n\n`
+			for (const res of sseClients) {
+				try {
+					res.write(payload)
+				} catch {
+					sseClients.delete(res)
+				}
+			}
+		})
+	}
+}
+
+// Attach SSE transport once at module load time so it captures all log output.
+logger.add(new SseTransport())
+
+function getPrimaryIp(): string {
+	const interfaces = os.networkInterfaces()
+	for (const name of Object.keys(interfaces)) {
+		const ifaceList = interfaces[name]
+		if (!ifaceList) continue
+		for (const iface of ifaceList) {
+			if (iface.family === "IPv4" && !iface.internal) {
+				return iface.address
+			}
+		}
+	}
+	return "127.0.0.1"
+}
+
+function parseJsonBody<T = unknown>(req: IncomingMessage): Promise<T> {
+	return new Promise((resolve, reject) => {
+		let body = ""
+		req.on("data", (chunk) => {
+			body += chunk
+		})
+		req.on("end", () => {
+			try {
+				resolve(body ? JSON.parse(body) : ({} as T))
+			} catch (err) {
+				reject(err)
+			}
+		})
+		req.on("error", reject)
+	})
+}
+
+function json(res: ServerResponse, status: number, body: unknown): void {
+	const payload = JSON.stringify(body)
+	res.writeHead(status, {
+		"Content-Type": "application/json",
+		"Content-Length": Buffer.byteLength(payload),
+	})
+	res.end(payload)
+}
+
+function requireAuth(req: IncomingMessage, res: ServerResponse): boolean {
+	const addr = req.socket.remoteAddress
+	const isLocal =
+		addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1"
+	if (isLocal) return true
+
+	const authHeader = req.headers.authorization ?? ""
+	let token = authHeader.startsWith("Bearer ")
+		? authHeader.slice(7).trim()
+		: null
+
+	if (!token) {
+		const url = new URL(req.url ?? "", `http://${req.headers.host}`)
+		token = url.searchParams.get("token")
+	}
+
+	if (!token || !isKnownToken(token)) {
+		json(res, 401, { error: "Unauthorized" })
+		return false
+	}
+	return true
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Vite server instance
+export function attachSignalingRoutes(server: any): void {
+	const httpServer = server.httpServer || server
+
+	if (!webrtcManager && httpServer) {
+		webrtcManager = new WebRTCManager(httpServer)
+	}
+
+	if (!gstManager) {
+		gstManager = new GstManager()
+		hostStatus = "starting"
+		gstManager
+			.start()
+			.then(() => {
+				hostStatus = "running"
+				logger.info("GStreamer capture engine started")
+			})
+			.catch((err) => {
+				logger.error(`Failed to start GStreamer capture engine: ${err}`)
+				hostStatus = "error"
+			})
+	}
+
+	const handleApiRequest = (
 		req: IncomingMessage,
 		res: ServerResponse,
-		...params: string[]
-	) => void | Promise<void>
-}
+		next?: () => void,
+	) => {
+		const pathname = new URL(
+			req.url ?? "",
+			`http://${req.headers.host ?? "localhost"}`,
+		).pathname
 
-const routes: Route[] = [
-	{ method: "GET", pattern: /^\/api\/host\/ip$/, handler: handleGetIp },
-	{ method: "POST", pattern: /^\/api\/config$/, handler: handleUpdateConfig },
-	{ method: "POST", pattern: /^\/api\/session$/, handler: handleCreateSession },
-	{
-		method: "GET",
-		pattern: /^\/api\/session\/([^/]+)$/,
-		handler: (req, res, id) => handleGetSession(req, res, id),
-	},
-	{
-		method: "DELETE",
-		pattern: /^\/api\/session\/([^/]+)$/,
-		handler: (req, res, id) => handleDeleteSession(req, res, id),
-	},
-	{ method: "POST", pattern: /^\/api\/webrtc\/offer$/, handler: handleOffer },
-	{ method: "POST", pattern: /^\/api\/webrtc\/answer$/, handler: handleAnswer },
-	{ method: "POST", pattern: /^\/api\/webrtc\/ice$/, handler: handleIce },
-	{ method: "GET", pattern: /^\/api\/webrtc\/events$/, handler: handleEvents },
-	{ method: "POST", pattern: /^\/api\/host\/start$/, handler: handleHostStart },
-	{ method: "POST", pattern: /^\/api\/host\/stop$/, handler: handleHostStop },
-	{
-		method: "GET",
-		pattern: /^\/api\/host\/status$/,
-		handler: handleHostStatus,
-	},
-	{
-		method: "POST",
-		pattern: /^\/api\/webrtc\/input-offer$/,
-		handler: handleInputOffer,
-	},
-	{
-		method: "POST",
-		pattern: /^\/api\/auth\/token$/,
-		handler: handleGenerateToken,
-	},
-	{ method: "GET", pattern: /^\/api\/auth\/token$/, handler: handleGetToken },
-	{
-		method: "POST",
-		pattern: /^\/api\/webrtc\/gateway$/,
-		handler: handleGstSignalingGateway,
-	},
-	{
-		method: "POST",
-		pattern: /^\/api\/webrtc\/whip$/,
-		handler: handleWhipSignalingExchange,
-	},
-]
+		if (!pathname.startsWith("/api/")) {
+			if (next) next()
+			return
+		}
 
-export function attachSignalingRoutes(
-	server: NonNullable<import("vite").ViteDevServer["httpServer"]>,
-): void {
-	server.prependListener(
-		"request",
-		(req: IncomingMessage, res: ServerResponse) => {
-			const pathname = new URL(
-				req.url ?? "",
-				`http://${req.headers.host ?? "localhost"}`,
-			).pathname
-
-			if (!pathname.startsWith("/api/")) return
-
-			const method = req.method?.toUpperCase() ?? "GET"
-			for (const route of routes) {
-				if (route.method !== method) continue
-				const match = pathname.match(route.pattern)
-				if (!match) continue
-
-				const anyRes = res as ServerResponse & {
-					__handledByRein?: boolean
-					__reinOriginalWrite?: typeof originalWrite
-				}
-				anyRes.__handledByRein = true
-
-				const originalSetHeader = res.setHeader.bind(res)
-				const originalWriteHead = res.writeHead.bind(res)
-				const originalWrite = res.write.bind(res)
-				const originalEnd = res.end.bind(res)
-
-				anyRes.__reinOriginalWrite = originalWrite
-
-				res.setHeader = ((...args: Parameters<typeof res.setHeader>) => {
-					if (anyRes.__handledByRein && !reinStorage.getStore()) {
-						return res
-					}
-					if (res.headersSent) return res
-					return originalSetHeader(...args)
-				}) as typeof res.setHeader
-
-				res.writeHead = ((...args: unknown[]) => {
-					if (anyRes.__handledByRein && !reinStorage.getStore()) {
-						return res
-					}
-					if (res.writableEnded) return res
-					return (originalWriteHead as (...a: unknown[]) => ServerResponse)(
-						...args,
-					)
-				}) as typeof res.writeHead
-
-				res.write = ((...args: unknown[]) => {
-					if (anyRes.__handledByRein && !reinStorage.getStore()) {
-						return true
-					}
-					return (originalWrite as (...a: unknown[]) => boolean)(...args)
-				}) as typeof res.write
-
-				res.end = ((...args: unknown[]) => {
-					if (anyRes.__handledByRein && !reinStorage.getStore()) {
-						return res
-					}
-					return (originalEnd as (...a: unknown[]) => ServerResponse)(...args)
-				}) as typeof res.end
-
-				const params = match.slice(1)
-				Promise.resolve()
-					.then(() =>
-						reinStorage.run(true, () => route.handler(req, res, ...params)),
-					)
-					.catch((err) => {
-						logger.error(`Signaling route error: ${String(err)}`)
-						if (!res.headersSent) {
-							reinStorage.run(true, () => {
-								json(res, 500, { error: "Internal server error" })
-							})
-						}
-					})
+		if (pathname === "/api/host/start" && req.method === "POST") {
+			if (!requireAuth(req, res)) return
+			if (hostStatus === "running") {
+				json(res, 200, { status: hostStatus })
 				return
 			}
-		},
-	)
-	logger.info("Signaling HTTP routes attached")
+			hostStatus = "starting"
+			if (!gstManager) gstManager = new GstManager()
+			gstManager
+				.start()
+				.then(() => {
+					hostStatus = "running"
+				})
+				.catch((err) => {
+					logger.error(`Failed to start GStreamer: ${err}`)
+					hostStatus = "error"
+				})
+
+			json(res, 200, { status: hostStatus })
+			return
+		}
+
+		if (pathname === "/api/host/stop" && req.method === "POST") {
+			if (!requireAuth(req, res)) return
+			if (gstManager) {
+				gstManager.stop()
+			}
+			hostStatus = "stopped"
+			json(res, 200, { status: hostStatus })
+			return
+		}
+
+		if (pathname === "/api/host/status" && req.method === "GET") {
+			if (!requireAuth(req, res)) return
+			json(res, 200, { status: hostStatus })
+			return
+		}
+
+		if (pathname === "/api/host/ip" && req.method === "GET") {
+			if (!requireAuth(req, res)) return
+			json(res, 200, { ip: getPrimaryIp() })
+			return
+		}
+
+		if (pathname === "/api/auth/token" && req.method === "POST") {
+			const addr = req.socket.remoteAddress
+			const isLocal =
+				addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1"
+			if (!isLocal) {
+				json(res, 403, { error: "Localhost only" })
+				return
+			}
+			let token = getActiveToken()
+			if (!token) {
+				token = generateToken()
+				storeToken(token)
+			}
+			json(res, 200, { token })
+			return
+		}
+
+		if (pathname === "/api/config" && req.method === "POST") {
+			if (!requireAuth(req, res)) return
+			parseJsonBody<Partial<InputConfig>>(req)
+				.then((config) => {
+					if (webrtcManager) {
+						webrtcManager.updateConfig(config)
+					}
+					json(res, 200, { ok: true })
+				})
+				.catch((err) => {
+					json(res, 400, { ok: false, error: String(err) })
+				})
+			return
+		}
+
+		if (pathname === "/api/debug/sessions" && req.method === "GET") {
+			const sessions = webrtcManager?.getSessions() ?? []
+			const inputConnectionCount = sessions.filter(
+				(s) => s.hasInputConnection,
+			).length
+			json(res, 200, {
+				hostStatus,
+				sessionCount: sessions.length,
+				sessions,
+				inputConnectionCount,
+				latencyMs: lastReportedLatencyMs,
+			})
+			return
+		}
+
+		if (pathname === "/api/debug/report-latency" && req.method === "POST") {
+			parseJsonBody<{ latencyMs?: number }>(req)
+				.then((body) => {
+					if (typeof body.latencyMs === "number" && body.latencyMs >= 0) {
+						lastReportedLatencyMs = body.latencyMs
+					}
+					json(res, 200, { ok: true })
+				})
+				.catch(() => json(res, 400, { ok: false }))
+			return
+		}
+
+		if (pathname === "/api/debug/logs" && req.method === "GET") {
+			res.writeHead(200, {
+				"Content-Type": "text/event-stream",
+				"Cache-Control": "no-cache",
+				Connection: "keep-alive",
+				"X-Accel-Buffering": "no",
+			})
+			// Send a comment to establish the connection
+			res.write(": connected\n\n")
+			sseClients.add(res)
+			req.on("close", () => sseClients.delete(res))
+			req.on("error", () => sseClients.delete(res))
+			return
+		}
+
+		json(res, 404, { error: "API endpoint not found" })
+	}
+
+	if (server.middlewares) {
+		server.middlewares.use(handleApiRequest)
+	} else if (httpServer && typeof httpServer.on === "function") {
+		httpServer.on("request", handleApiRequest)
+	}
+
+	logger.info("Signaling HTTP routes and WebSocket attached")
 }
 
-// Re-export state and event systems for other signaling servers/files
-export { sessions, hostStatus, pushEvent } from "./api/apiState"
+export function stopServer() {
+	if (webrtcManager) webrtcManager.shutdown()
+	if (gstManager) gstManager.stop()
+}

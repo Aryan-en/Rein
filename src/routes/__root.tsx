@@ -12,6 +12,7 @@ import {
 	ConnectionProvider,
 	useConnection,
 } from "../contexts/ConnectionProvider"
+import { DebugProvider } from "../contexts/DebugContext"
 
 export const Route = createRootRoute({
 	component: AppWithConnection,
@@ -28,7 +29,9 @@ export const Route = createRootRoute({
 function AppWithConnection() {
 	return (
 		<ConnectionProvider>
-			<RootComponent />
+			<DebugProvider>
+				<RootComponent />
+			</DebugProvider>
 		</ConnectionProvider>
 	)
 }

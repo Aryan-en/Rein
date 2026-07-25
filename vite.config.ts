@@ -17,14 +17,10 @@ const config = defineConfig({
 		{
 			name: "rein-server",
 			async configureServer(server) {
-				const httpServer = server.httpServer
-				if (!httpServer) return
-				attachSignalingRoutes(httpServer)
+				attachSignalingRoutes(server)
 			},
 			async configurePreviewServer(server) {
-				const httpServer = server.httpServer
-				if (!httpServer) return
-				attachSignalingRoutes(httpServer)
+				attachSignalingRoutes(server)
 			},
 		},
 		devtools(),
@@ -37,7 +33,7 @@ const config = defineConfig({
 		}),
 	],
 	ssr: {
-		external: ["node-datachannel", "dbus-next", "eventsource"],
+		external: ["dbus-next", "eventsource", "werift"],
 		noExternal: ["tailwindcss", "@tailwindcss/postcss"],
 	},
 	server: {
@@ -46,7 +42,7 @@ const config = defineConfig({
 	},
 	build: {
 		rollupOptions: {
-			external: ["node-datachannel"],
+			external: ["werift"],
 		},
 	},
 })

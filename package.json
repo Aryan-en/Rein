@@ -29,11 +29,12 @@
 		"lucide-react": "^0.561.0",
 		"nitro": "^3.0.260429-beta",
 		"nitro-nightly": "^3.0.1-20260501-164602-aee73f19",
-		"node-datachannel": "^0.32.3",
 		"qrcode": "^1.5.4",
 		"react": "^19.2.5",
 		"react-dom": "^19.2.5",
 		"react-icons": "^5.5.0",
+		"recharts": "^3.10.0",
+		"werift": "^0.23.0",
 		"winston": "^3.19.0",
 		"ws": "^8.18.0"
 	},
@@ -103,7 +104,6 @@
 		"electron@40.10.5": true,
 		"electron-winstaller@5.4.0": true,
 		"esbuild@0.28.1": true,
-		"koffi@2.16.2": true,
-		"node-datachannel@0.32.3": true
+		"koffi@2.16.2": true
 	}
 }

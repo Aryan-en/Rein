@@ -24,8 +24,8 @@ let _CGEventCreateScrollWheelEvent: koffi.KoffiFunction | null = null
 let _CGEventPost: koffi.KoffiFunction | null = null
 let _CFRelease: koffi.KoffiFunction | null = null
 let _CGEventSetIntegerValueField: koffi.KoffiFunction | null = null
-let _CGEventSetDoubleValueField: koffi.KoffiFunction | null = null
-let _CGEventGetLocation: koffi.KoffiFunction | null = null
+export let _CGEventSetDoubleValueField: koffi.KoffiFunction | null = null
+export let _CGEventGetLocation: koffi.KoffiFunction | null = null
 
 function ensureFunctions() {
 	const lib = cg()

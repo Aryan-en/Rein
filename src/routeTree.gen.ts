@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TrackpadRouteImport } from './routes/trackpad'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as DebugRouteImport } from './routes/debug'
 import { Route as IndexRouteImport } from './routes/index'
 
 const TrackpadRoute = TrackpadRouteImport.update({
@@ -23,6 +24,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DebugRoute = DebugRouteImport.update({
+  id: '/debug',
+  path: '/debug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,30 +37,34 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/trackpad': typeof TrackpadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/trackpad': typeof TrackpadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/trackpad': typeof TrackpadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/trackpad'
+  fullPaths: '/' | '/debug' | '/settings' | '/trackpad'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/trackpad'
-  id: '__root__' | '/' | '/settings' | '/trackpad'
+  to: '/' | '/debug' | '/settings' | '/trackpad'
+  id: '__root__' | '/' | '/debug' | '/settings' | '/trackpad'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DebugRoute: typeof DebugRoute
   SettingsRoute: typeof SettingsRoute
   TrackpadRoute: typeof TrackpadRoute
 }
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/debug': {
+      id: '/debug'
+      path: '/debug'
+      fullPath: '/debug'
+      preLoaderRoute: typeof DebugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DebugRoute: DebugRoute,
   SettingsRoute: SettingsRoute,
   TrackpadRoute: TrackpadRoute,
 }
