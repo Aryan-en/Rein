@@ -18,10 +18,20 @@ export const i18n = {
 			establishingSecure: "Establishing secure connection",
 			settingUpScreen: "Setting up screen sharing",
 			checkNetwork: "Attempting to connect to the host.",
+			establishingConnection: "Establishing Connection",
+			negotiatingWebRtc: "Negotiating WebRTC session, please wait\u2026",
 		},
 		errorComponent: {
 			unknownError: "Unknown Error",
 			unexpectedNetworkError: "An unexpected network error occurred.",
+		},
+		server: {
+			welcomeTitle: "Welcome to Rein",
+			localLabel: "Local",
+			networkLabel: "Network",
+			debugLabel: "Debug",
+			settingsLabel: "Settings",
+			readyLine: "Listening for connections",
 		},
 	},
 } as const

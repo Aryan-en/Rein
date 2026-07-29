@@ -43,10 +43,16 @@ function TrackpadPage() {
 	const [keyboardOpen, setKeyboardOpen] = useState(false)
 	const [extraKeysVisible, setExtraKeysVisible] = useState(true)
 	const { status, send, sendCombo } = useRemoteConnection()
-	const { trackActive, videoStream, error, errorHandle, reconnect } =
-		useWebRtcStream({
-			token,
-		})
+	const {
+		trackActive,
+		videoStream,
+		error,
+		errorHandle,
+		connecting,
+		reconnect,
+	} = useWebRtcStream({
+		token,
+	})
 
 	// Send input actions safely over WebRTC DataChannels
 	const broadcastMessage = (payload: unknown) => {
@@ -224,6 +230,7 @@ function TrackpadPage() {
 						handlers={handlers}
 						videoStream={videoStream}
 						trackActive={trackActive}
+						connecting={connecting}
 						status={status}
 					/>
 				)}

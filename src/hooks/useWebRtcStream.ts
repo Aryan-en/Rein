@@ -13,6 +13,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 	const [videoStream, setVideoStream] = useState<MediaStream | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [errorHandle, setErrorHandle] = useState<string | null>(null)
+	const [connecting, setConnecting] = useState(false)
 	const [reconnectAttempt, setReconnectAttempt] = useState(0)
 	const { registerDataChannel, send: sendInputEvent } = useConnection()
 
@@ -43,6 +44,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 			console.warn(
 				`[WebRTC] Max retry attempts (${MAX_RETRIES}) reached. Stopping retries.`,
 			)
+			setConnecting(false)
 			setErrorHandle("Connection Failed")
 			setError("Failed to establish stream session after multiple attempts")
 			isRetryingRef.current = false
@@ -102,6 +104,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		}
 		setErrorHandle(null)
 		setError(null)
+		setConnecting(true)
 		setTrackActive(false)
 		setVideoStream(null)
 		retryCountRef.current = 0
@@ -112,6 +115,8 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		if (!token) return
 
 		let isDisposed = false
+
+		setConnecting(true)
 
 		if (reconnectAttempt > 0) {
 			console.log(
@@ -138,6 +143,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 			if (event.track.kind === "video" && event.streams[0]) {
 				setVideoStream(event.streams[0])
 				setTrackActive(true)
+				setConnecting(false)
 				retryCountRef.current = 0
 			}
 		}
@@ -205,6 +211,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 					}
 				} else if (msg.type === "error") {
 					console.error("[WebRTC] Host error received:", msg)
+					setConnecting(false)
 					setErrorHandle(msg.errorType || "Host Error")
 					setError(msg.message || "Host reported an error")
 				}
@@ -279,6 +286,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		videoStream,
 		error,
 		errorHandle,
+		connecting,
 		reconnect,
 		sendInputEvent,
 	}

@@ -5,7 +5,9 @@ import { nitro } from "nitro/vite"
 import { defineConfig } from "vite"
 import serverConfig from "./src/server-config.json"
 import { attachSignalingRoutes } from "./src/server/server"
+import { printWelcome } from "./src/server/welcome"
 import react from "@vitejs/plugin-react"
+
 const config = defineConfig({
 	base: "/",
 	resolve: {
@@ -18,9 +20,25 @@ const config = defineConfig({
 			name: "rein-server",
 			async configureServer(server) {
 				attachSignalingRoutes(server)
+				server.httpServer?.once("listening", () => {
+					const addr = server.httpServer?.address()
+					const port =
+						addr && typeof addr === "object"
+							? addr.port
+							: serverConfig.frontendPort
+					printWelcome(port)
+				})
 			},
 			async configurePreviewServer(server) {
 				attachSignalingRoutes(server)
+				server.httpServer?.once("listening", () => {
+					const addr = server.httpServer?.address()
+					const port =
+						addr && typeof addr === "object"
+							? addr.port
+							: serverConfig.frontendPort
+					printWelcome(port)
+				})
 			},
 		},
 		devtools(),

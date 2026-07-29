@@ -16,15 +16,13 @@ import type { InputConfig } from "./types"
 let gstManager: GstManager | null = null
 let webrtcManager: WebRTCManager | null = null
 let hostStatus: "stopped" | "starting" | "running" | "error" = "stopped"
-/** Latest RTT reported by the connected client (phone). Updated via POST /api/debug/report-latency. */
 let lastReportedLatencyMs: number | null = null
 
-// ── SSE log fan-out ───────────────────────────────────────────────────────────
-// A set of active SSE response streams. Each GET /api/debug/logs subscriber
-// gets added here and removed on close/error.
 const sseClients = new Set<ServerResponse>()
 
-/** Custom Winston transport that pushes every log line to SSE subscribers. */
+const LOG_BUFFER_MAX = 500
+const logBuffer: string[] = []
+
 class SseTransport extends winston.transports.Stream {
 	constructor() {
 		const passthrough = new Transform({
@@ -41,6 +39,9 @@ class SseTransport extends winston.transports.Stream {
 				level: String(info.level ?? "info").toUpperCase(),
 				message: String(info.message ?? ""),
 			})}\n\n`
+			// Push to replay buffer
+			logBuffer.push(payload)
+			if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift()
 			for (const res of sseClients) {
 				try {
 					res.write(payload)
@@ -52,7 +53,6 @@ class SseTransport extends winston.transports.Stream {
 	}
 }
 
-// Attach SSE transport once at module load time so it captures all log output.
 logger.add(new SseTransport())
 
 function getPrimaryIp(): string {
@@ -266,8 +266,15 @@ export function attachSignalingRoutes(server: any): void {
 				Connection: "keep-alive",
 				"X-Accel-Buffering": "no",
 			})
-			// Send a comment to establish the connection
 			res.write(": connected\n\n")
+			// Replay buffered logs so the client sees history from before opening /debug
+			for (const entry of logBuffer) {
+				try {
+					res.write(entry)
+				} catch {
+					/* client gone already */
+				}
+			}
 			sseClients.add(res)
 			req.on("close", () => sseClients.delete(res))
 			req.on("error", () => sseClients.delete(res))

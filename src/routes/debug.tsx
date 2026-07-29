@@ -163,7 +163,7 @@ function DebugScreen() {
 	const [consoleTab, setConsoleTab] = useState<"server" | "client">("server")
 	const [levelFilter, setLevelFilter] = useState("ALL")
 	const [searchQuery, setSearchQuery] = useState("")
-	const [copiedId, setCopiedId] = useState<string | null>(null)
+	const [_copiedId, setCopiedId] = useState<string | null>(null)
 	const logEndRef = useRef<HTMLDivElement>(null)
 	const copyToClipboard = (id: string, text: string) => {
 		const done = () => {
