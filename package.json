@@ -101,9 +101,9 @@
 		}
 	},
 	"allowScripts": {
-		"electron@40.10.5": true,
 		"electron-winstaller@5.4.0": true,
 		"esbuild@0.28.1": true,
-		"koffi@2.16.2": true
+		"electron@40.10.6": true,
+		"koffi@2.16.3": true
 	}
 }

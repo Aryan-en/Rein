@@ -35,7 +35,7 @@ export function printWelcome(port: number): void {
 			`  ${bold(cyan("REIN"))}`,
 			`  ${divider}`,
 			"",
-			`  ${row(str.localLabel, local,cyan)}`,
+			`  ${row(str.localLabel, local, cyan)}`,
 			`  ${row(str.networkLabel, network)}`,
 			`  ${row(str.debugLabel, debug, cyan)}`,
 			"",
