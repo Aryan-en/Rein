@@ -5,6 +5,7 @@ import path from "node:path"
 import logger from "../../utils/logger"
 import { type CaptureProvider, createCaptureProvider } from "./captureProvider"
 import { resolveGstPaths } from "./gstPaths"
+import { RTP_HOST, RTP_PORT } from "../constants"
 
 export class GstManager {
 	private process: ChildProcess | null = null
@@ -40,8 +41,8 @@ export class GstManager {
 			"pt=96",
 			"!",
 			"udpsink",
-			"host=127.0.0.1",
-			"port=5004",
+			`host=${RTP_HOST}`,
+			`port=${RTP_PORT}`,
 			"sync=false",
 			"async=false",
 		)
@@ -66,6 +67,7 @@ export class GstManager {
 		} catch (error) {
 			logger.error(`Capture initialization failed: ${String(error)}`)
 			await this.cleanup()
+			throw error
 		}
 	}
 
@@ -129,8 +131,18 @@ export class GstManager {
 	public async stop(): Promise<void> {
 		if (this.process) {
 			logger.info("Terminating GStreamer video pipeline")
-			this.process.kill("SIGTERM")
+			const proc = this.process
 			this.process = null
+			proc.kill("SIGTERM")
+			const killTimer = setTimeout(() => {
+				if (proc.exitCode === null) {
+					logger.warn(
+						"GStreamer process did not exit on SIGTERM, sending SIGKILL",
+					)
+					proc.kill("SIGKILL")
+				}
+			}, 2000)
+			proc.once("close", () => clearTimeout(killTimer))
 		}
 		await this.cleanup()
 	}

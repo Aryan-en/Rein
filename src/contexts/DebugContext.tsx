@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react"
@@ -40,7 +41,15 @@ function nowLabel(): string {
 }
 
 function serialize(args: unknown[]): { message: string; details?: string } {
-	const parts = args.map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+	const parts = args.map((a) => {
+		if (typeof a === "string") return a
+		if (a instanceof Error) return a.stack || a.message
+		try {
+			return JSON.stringify(a)
+		} catch {
+			return String(a)
+		}
+	})
 	const [message, ...rest] = parts
 	return {
 		message: message ?? "",
@@ -131,8 +140,13 @@ export function DebugProvider({ children }: { children: React.ReactNode }) {
 		}
 	}, [addLog])
 
+	const contextValue = useMemo(
+		() => ({ clientLogs, clearClientLogs }),
+		[clientLogs, clearClientLogs],
+	)
+
 	return (
-		<DebugContext.Provider value={{ clientLogs, clearClientLogs }}>
+		<DebugContext.Provider value={contextValue}>
 			{children}
 		</DebugContext.Provider>
 	)

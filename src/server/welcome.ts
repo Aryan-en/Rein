@@ -1,18 +1,7 @@
-import os from "node:os"
 import { i18n } from "../utils/i18n"
+import { getLanIp } from "./net"
 
 const str = i18n.en.server
-function getLanIp(): string {
-	const ifaces = os.networkInterfaces()
-	for (const name of Object.keys(ifaces)) {
-		for (const iface of ifaces[name] ?? []) {
-			if (iface.family === "IPv4" && !iface.internal) {
-				return iface.address
-			}
-		}
-	}
-	return "127.0.0.1"
-}
 
 export function printWelcome(port: number): void {
 	const local = `http://localhost:${port}`
@@ -40,8 +29,8 @@ export function printWelcome(port: number): void {
 			`  ${row(str.debugLabel, debug, cyan)}`,
 			"",
 			`  ${divider}`,
-			`  ${gray("Status")}     ${green("Running")}`,
-			`  ${gray("Port")}       ${port}`,
+			`  ${row(str.statusLabel, str.runningLabel, green)}`,
+			`  ${row(str.portLabel, String(port), cyan)}`,
 			"",
 		].join("\n"),
 	)

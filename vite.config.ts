@@ -30,9 +30,11 @@ const config = defineConfig({
 				})
 			},
 			async configurePreviewServer(server) {
+				const httpServer = server.httpServer
+				if (!httpServer) return
 				attachSignalingRoutes(server)
-				server.httpServer?.once("listening", () => {
-					const addr = server.httpServer?.address()
+				httpServer.once("listening", () => {
+					const addr = httpServer.address()
 					const port =
 						addr && typeof addr === "object"
 							? addr.port

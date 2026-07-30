@@ -32,6 +32,9 @@ export const i18n = {
 			debugLabel: "Debug",
 			settingsLabel: "Settings",
 			readyLine: "Listening for connections",
+			statusLabel: "Status",
+			runningLabel: "Running",
+			portLabel: "Port",
 		},
 	},
 } as const

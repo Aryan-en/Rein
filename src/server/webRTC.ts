@@ -2,13 +2,18 @@ import {
 	MediaStreamTrack,
 	RTCPeerConnection,
 	RTCRtpCodecParameters,
+	type RTCDataChannel,
 } from "werift"
 import { WebSocketServer, WebSocket } from "ws"
 import dgram from "node:dgram"
+import crypto from "node:crypto"
 import { InputHandler } from "./InputHandler"
 import logger from "../utils/logger"
 import type { InputMessage, InputConfig } from "./types"
 import fs from "node:fs"
+import { fileURLToPath } from "node:url"
+import { isKnownToken } from "./tokenStore"
+import { RTP_HOST, RTP_PORT } from "./constants"
 
 interface ClientSession {
 	ws: WebSocket
@@ -18,6 +23,8 @@ interface ClientSession {
 	sessionId: string
 	bytesRecv: number
 	bytesSent: number
+	dcUnordered: RTCDataChannel
+	dcOrdered: RTCDataChannel
 }
 
 import type { IncomingMessage } from "node:http"
@@ -37,31 +44,52 @@ export interface SessionSnapshot {
 export class WebRTCManager {
 	private wss: WebSocketServer
 	private udpSocket: dgram.Socket
+	private serverRef: EventEmitter
+	private upgradeHandler: (
+		request: IncomingMessage,
+		socket: Duplex,
+		head: Buffer,
+	) => void
 	private clients = new Map<string, ClientSession>()
 	private sessionCreatedAt = new Map<string, number>()
 
 	constructor(server: EventEmitter) {
 		this.wss = new WebSocketServer({ noServer: true })
 		this.udpSocket = dgram.createSocket("udp4")
+		this.serverRef = server
 
-		server.on(
-			"upgrade",
-			(request: IncomingMessage, socket: Duplex, head: Buffer) => {
-				try {
-					const url = new URL(
-						request.url || "",
-						`http://${request.headers.host || "localhost"}`,
-					)
-					if (url.pathname === "/ws") {
-						this.wss.handleUpgrade(request, socket, head, (ws) => {
-							this.wss.emit("connection", ws, request)
-						})
+		this.upgradeHandler = (
+			request: IncomingMessage,
+			socket: Duplex,
+			head: Buffer,
+		) => {
+			try {
+				const url = new URL(
+					request.url || "",
+					`http://${request.headers.host || "localhost"}`,
+				)
+				if (url.pathname === "/ws") {
+					const addr = request.socket.remoteAddress
+					const isLocal =
+						addr === "127.0.0.1" ||
+						addr === "::1" ||
+						addr === "::ffff:127.0.0.1"
+					const token = url.searchParams.get("token")
+					if (!isLocal && (!token || !isKnownToken(token))) {
+						socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
+						socket.destroy()
+						return
 					}
-				} catch (_err) {
-					// Ignore invalid URLs or non-matching upgrades
+					this.wss.handleUpgrade(request, socket, head, (ws) => {
+						this.wss.emit("connection", ws, request)
+					})
 				}
-			},
-		)
+			} catch (_err) {
+				// Ignore invalid URLs or non-matching upgrades
+			}
+		}
+
+		this.serverRef.on("upgrade", this.upgradeHandler)
 
 		this.setupUdpSocket()
 		this.setupWebSocketServer()
@@ -70,28 +98,34 @@ export class WebRTCManager {
 	private setupUdpSocket() {
 		this.udpSocket.on("error", (err) => {
 			logger.error(`UDP socket error:\n${err.stack}`)
-			this.udpSocket.close()
+			try {
+				this.udpSocket.close()
+			} catch {}
 		})
 
 		this.udpSocket.on("message", (msg) => {
 			for (const client of this.clients.values()) {
 				try {
 					client.videoTrack.writeRtp(msg)
-					client.bytesRecv += msg.length
+					client.bytesSent += msg.length
 				} catch (_err) {
 					// Ignore individual track write errors
 				}
 			}
 		})
 
-		this.udpSocket.bind(5004, "127.0.0.1", () => {
-			logger.info("UDP socket listening for RTP packets on 127.0.0.1:5004")
+		this.udpSocket.bind(RTP_PORT, RTP_HOST, () => {
+			logger.info(
+				`UDP socket listening for RTP packets on ${RTP_HOST}:${RTP_PORT}`,
+			)
 		})
 	}
 
 	private getInitialConfig(): Partial<InputConfig> {
 		try {
-			const configPath = "./src/server-config.json"
+			const configPath = fileURLToPath(
+				new URL("../server-config.json", import.meta.url),
+			)
 			if (fs.existsSync(configPath)) {
 				const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"))
 				return {
@@ -111,7 +145,7 @@ export class WebRTCManager {
 
 	private setupWebSocketServer() {
 		this.wss.on("connection", async (ws) => {
-			const sessionId = Math.random().toString(36).substring(7)
+			const sessionId = crypto.randomUUID()
 			this.sessionCreatedAt.set(sessionId, Date.now())
 			logger.info(`Viewer connected via WebSocket: ${sessionId}`)
 
@@ -166,19 +200,20 @@ export class WebRTCManager {
 			})
 			const dcOrdered = pc.createDataChannel("input-ordered", { ordered: true })
 
-			const handleDataMessage = (msg: Buffer | string) => {
+			const handleDataMessage = (dc: RTCDataChannel, msg: Buffer | string) => {
 				try {
 					const raw = typeof msg === "string" ? msg : msg.toString()
 					const session = this.clients.get(sessionId)
-					if (session) session.bytesSent += raw.length
+					if (session) session.bytesRecv += raw.length
 					const parsed = JSON.parse(raw)
 					if (parsed.type === "ping") {
 						const pong = JSON.stringify({
 							type: "pong",
 							timestamp: parsed.timestamp,
 						})
-						dcUnordered.send(pong)
-						dcOrdered.send(pong)
+						if (dc.readyState === "open") {
+							dc.send(pong)
+						}
 						return
 					}
 					inputHandler.handleMessage(parsed as InputMessage).catch((err) => {
@@ -189,8 +224,10 @@ export class WebRTCManager {
 				}
 			}
 
-			dcUnordered.onMessage.subscribe((msg) => handleDataMessage(msg))
-			dcOrdered.onMessage.subscribe((msg) => handleDataMessage(msg))
+			dcUnordered.onMessage.subscribe((msg) =>
+				handleDataMessage(dcUnordered, msg),
+			)
+			dcOrdered.onMessage.subscribe((msg) => handleDataMessage(dcOrdered, msg))
 
 			const client: ClientSession = {
 				ws,
@@ -200,22 +237,20 @@ export class WebRTCManager {
 				sessionId,
 				bytesRecv: 0,
 				bytesSent: 0,
+				dcUnordered,
+				dcOrdered,
 			}
 			this.clients.set(sessionId, client)
 
 			pc.iceConnectionStateChange.subscribe((state) => {
 				logger.info(`WebRTC ICE state for ${sessionId}: ${state}`)
-				if (
-					state === "disconnected" ||
-					state === "failed" ||
-					state === "closed"
-				) {
+				if (state === "failed" || state === "closed") {
 					this.cleanupClient(sessionId)
 				}
 			})
 
 			pc.onIceCandidate.subscribe((candidate) => {
-				if (candidate) {
+				if (candidate && ws.readyState === WebSocket.OPEN) {
 					ws.send(
 						JSON.stringify({ type: "ice", candidate: candidate.toJSON() }),
 					)
@@ -229,7 +264,7 @@ export class WebRTCManager {
 						await pc.setRemoteDescription(msg.sdp)
 					} else if (msg.type === "ice" && msg.candidate) {
 						await pc.addIceCandidate(msg.candidate)
-					} else if (msg.type === "ping") {
+					} else if (msg.type === "ping" && ws.readyState === WebSocket.OPEN) {
 						ws.send(JSON.stringify({ type: "pong" }))
 					}
 				} catch (err) {
@@ -244,8 +279,9 @@ export class WebRTCManager {
 			try {
 				const offer = await pc.createOffer()
 				await pc.setLocalDescription(offer)
-				console.log(offer.sdp)
-				ws.send(JSON.stringify({ type: "offer", sdp: offer }))
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.send(JSON.stringify({ type: "offer", sdp: offer }))
+				}
 			} catch (err) {
 				logger.error(`Failed to create offer: ${String(err)}`)
 				this.cleanupClient(sessionId)
@@ -270,12 +306,15 @@ export class WebRTCManager {
 	public getSessions(): SessionSnapshot[] {
 		const snapshots: SessionSnapshot[] = []
 		for (const [id, client] of this.clients) {
+			const hasInputConnection =
+				client.dcUnordered.readyState === "open" ||
+				client.dcOrdered.readyState === "open"
 			snapshots.push({
 				id,
 				state: client.pc.iceConnectionState ?? "new",
 				createdAt: this.sessionCreatedAt.get(id) ?? Date.now(),
-				sseViewerCount: client.ws.readyState === 1 ? 1 : 0,
-				hasInputConnection: true,
+				sseViewerCount: client.ws.readyState === WebSocket.OPEN ? 1 : 0,
+				hasInputConnection,
 				bytesRecv: client.bytesRecv,
 				bytesSent: client.bytesSent,
 			})
@@ -290,8 +329,13 @@ export class WebRTCManager {
 	}
 
 	public shutdown() {
+		if (this.serverRef && typeof this.serverRef.off === "function") {
+			this.serverRef.off("upgrade", this.upgradeHandler)
+		}
 		this.wss.close()
-		this.udpSocket.close()
+		try {
+			this.udpSocket.close()
+		} catch {}
 		for (const sessionId of this.clients.keys()) {
 			this.cleanupClient(sessionId)
 		}

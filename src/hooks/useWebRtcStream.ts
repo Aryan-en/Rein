@@ -53,12 +53,20 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 
 		if (wsRef.current) {
 			try {
+				wsRef.current.onclose = null
+				wsRef.current.onerror = null
+				wsRef.current.onmessage = null
+				wsRef.current.onopen = null
 				wsRef.current.close()
 			} catch {}
 			wsRef.current = null
 		}
 		if (pcRef.current) {
 			try {
+				pcRef.current.onconnectionstatechange = null
+				pcRef.current.ontrack = null
+				pcRef.current.ondatachannel = null
+				pcRef.current.onicecandidate = null
 				pcRef.current.close()
 			} catch {}
 			pcRef.current = null
@@ -92,12 +100,20 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		isRetryingRef.current = false
 		if (wsRef.current) {
 			try {
+				wsRef.current.onclose = null
+				wsRef.current.onerror = null
+				wsRef.current.onmessage = null
+				wsRef.current.onopen = null
 				wsRef.current.close()
 			} catch {}
 			wsRef.current = null
 		}
 		if (pcRef.current) {
 			try {
+				pcRef.current.onconnectionstatechange = null
+				pcRef.current.ontrack = null
+				pcRef.current.ondatachannel = null
+				pcRef.current.onicecandidate = null
 				pcRef.current.close()
 			} catch {}
 			pcRef.current = null
@@ -125,7 +141,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		}
 
 		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
-		const wsUrl = `${protocol}//${window.location.host}/ws`
+		const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
 		const ws = new WebSocket(wsUrl)
 		wsRef.current = ws
 
@@ -186,12 +202,20 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		ws.onmessage = async (event) => {
 			if (isDisposed || isRetryingRef.current) return
 			try {
-				const msg = JSON.parse(event.data)
-				if (msg.type === "offer") {
+				const msg = JSON.parse(event.data) as {
+					type: string
+					sdp?: RTCSessionDescriptionInit
+					candidate?: RTCIceCandidateInit
+					errorType?: string
+					message?: string
+				}
+				if (msg.type === "offer" && msg.sdp) {
 					await pc.setRemoteDescription(msg.sdp)
 					const answer = await pc.createAnswer()
 					await pc.setLocalDescription(answer)
-					ws.send(JSON.stringify({ type: "answer", sdp: answer }))
+					if (ws.readyState === WebSocket.OPEN) {
+						ws.send(JSON.stringify({ type: "answer", sdp: answer }))
+					}
 
 					while (iceQueue.length > 0) {
 						const cand = iceQueue.shift()
@@ -271,9 +295,17 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 			isDisposed = true
 			clearInterval(statsInterval)
 			try {
+				ws.onclose = null
+				ws.onerror = null
+				ws.onmessage = null
+				ws.onopen = null
 				ws.close()
 			} catch {}
 			try {
+				pc.onconnectionstatechange = null
+				pc.ontrack = null
+				pc.ondatachannel = null
+				pc.onicecandidate = null
 				pc.close()
 			} catch {}
 			setTrackActive(false)

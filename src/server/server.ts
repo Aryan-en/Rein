@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
-import os from "node:os"
 import { Transform } from "node:stream"
 import logger from "../utils/logger"
 import winston from "winston"
@@ -12,6 +11,7 @@ import {
 import { GstManager } from "./gstreamer/gstManager"
 import { WebRTCManager } from "./webRTC"
 import type { InputConfig } from "./types"
+import { getLanIp } from "./net"
 
 let gstManager: GstManager | null = null
 let webrtcManager: WebRTCManager | null = null
@@ -55,24 +55,19 @@ class SseTransport extends winston.transports.Stream {
 
 logger.add(new SseTransport())
 
-function getPrimaryIp(): string {
-	const interfaces = os.networkInterfaces()
-	for (const name of Object.keys(interfaces)) {
-		const ifaceList = interfaces[name]
-		if (!ifaceList) continue
-		for (const iface of ifaceList) {
-			if (iface.family === "IPv4" && !iface.internal) {
-				return iface.address
-			}
-		}
-	}
-	return "127.0.0.1"
-}
+const MAX_BODY_BYTES = 1024 * 1024 // 1MB limit
 
 function parseJsonBody<T = unknown>(req: IncomingMessage): Promise<T> {
 	return new Promise((resolve, reject) => {
 		let body = ""
+		let size = 0
 		req.on("data", (chunk) => {
+			size += chunk.length
+			if (size > MAX_BODY_BYTES) {
+				req.destroy()
+				reject(new Error("Payload too large"))
+				return
+			}
 			body += chunk
 		})
 		req.on("end", () => {
@@ -180,11 +175,20 @@ export function attachSignalingRoutes(server: any): void {
 
 		if (pathname === "/api/host/stop" && req.method === "POST") {
 			if (!requireAuth(req, res)) return
-			if (gstManager) {
-				gstManager.stop()
-			}
 			hostStatus = "stopped"
-			json(res, 200, { status: hostStatus })
+			if (gstManager) {
+				gstManager
+					.stop()
+					.then(() => {
+						json(res, 200, { status: hostStatus })
+					})
+					.catch((err) => {
+						logger.error(`Error stopping GStreamer: ${err}`)
+						json(res, 500, { error: "Failed to stop host engine" })
+					})
+			} else {
+				json(res, 200, { status: hostStatus })
+			}
 			return
 		}
 
@@ -196,7 +200,7 @@ export function attachSignalingRoutes(server: any): void {
 
 		if (pathname === "/api/host/ip" && req.method === "GET") {
 			if (!requireAuth(req, res)) return
-			json(res, 200, { ip: getPrimaryIp() })
+			json(res, 200, { ip: getLanIp() })
 			return
 		}
 
@@ -233,6 +237,7 @@ export function attachSignalingRoutes(server: any): void {
 		}
 
 		if (pathname === "/api/debug/sessions" && req.method === "GET") {
+			if (!requireAuth(req, res)) return
 			const sessions = webrtcManager?.getSessions() ?? []
 			const inputConnectionCount = sessions.filter(
 				(s) => s.hasInputConnection,
@@ -248,6 +253,7 @@ export function attachSignalingRoutes(server: any): void {
 		}
 
 		if (pathname === "/api/debug/report-latency" && req.method === "POST") {
+			if (!requireAuth(req, res)) return
 			parseJsonBody<{ latencyMs?: number }>(req)
 				.then((body) => {
 					if (typeof body.latencyMs === "number" && body.latencyMs >= 0) {
@@ -260,6 +266,7 @@ export function attachSignalingRoutes(server: any): void {
 		}
 
 		if (pathname === "/api/debug/logs" && req.method === "GET") {
+			if (!requireAuth(req, res)) return
 			res.writeHead(200, {
 				"Content-Type": "text/event-stream",
 				"Cache-Control": "no-cache",
@@ -276,8 +283,21 @@ export function attachSignalingRoutes(server: any): void {
 				}
 			}
 			sseClients.add(res)
-			req.on("close", () => sseClients.delete(res))
-			req.on("error", () => sseClients.delete(res))
+			const keepAliveTimer = setInterval(() => {
+				try {
+					res.write(": keep-alive\n\n")
+				} catch {
+					sseClients.delete(res)
+					clearInterval(keepAliveTimer)
+				}
+			}, 15000)
+
+			const cleanupSse = () => {
+				sseClients.delete(res)
+				clearInterval(keepAliveTimer)
+			}
+			req.on("close", cleanupSse)
+			req.on("error", cleanupSse)
 			return
 		}
 
@@ -293,7 +313,7 @@ export function attachSignalingRoutes(server: any): void {
 	logger.info("Signaling HTTP routes and WebSocket attached")
 }
 
-export function stopServer() {
+export async function stopServer() {
 	if (webrtcManager) webrtcManager.shutdown()
-	if (gstManager) gstManager.stop()
+	if (gstManager) await gstManager.stop()
 }

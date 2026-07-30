@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import winston from "winston"
 
 // dynamic log path (similar to logPath() requirement)
@@ -22,12 +23,16 @@ try {
 // Read verboseLogs flag from server-config.json (defaults to false if missing/unreadable)
 let verboseLogs = false
 try {
-	const configPath = path.join(__dirname, "..", "server-config.json")
+	const configPath = fileURLToPath(
+		new URL("../server-config.json", import.meta.url),
+	)
 	const raw = fs.readFileSync(configPath, "utf-8")
 	const cfg = JSON.parse(raw) as { verboseLogs?: boolean }
 	verboseLogs = cfg.verboseLogs === true
-} catch {
-	// Config unreadable — keep terminal silent
+} catch (err: unknown) {
+	process.stderr.write(
+		`[logger] Server config read notice: ${err instanceof Error ? err.message : String(err)}\n`,
+	)
 }
 
 // Ensure the logger handles uncaught exceptions and rejections
@@ -64,8 +69,15 @@ if (verboseLogs) {
 
 // Optional: Intercept standard console.log and redirect to winston
 
-const serialize = (a: unknown): string =>
-	typeof a === "string" ? a : JSON.stringify(a)
+const serialize = (a: unknown): string => {
+	if (typeof a === "string") return a
+	if (a instanceof Error) return a.stack || a.message
+	try {
+		return JSON.stringify(a)
+	} catch {
+		return String(a)
+	}
+}
 
 console.log = (...args: unknown[]) => {
 	logger.info(args.map(serialize).join(" "))

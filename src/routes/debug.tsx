@@ -131,11 +131,17 @@ function DebugScreen() {
 			{ t: nowLabel(), recvKBps: 0, sentKBps: 0, latencyMs: 0 },
 		])
 	}, [selectedSessionId])
+	const serverStateRef = useRef(serverState)
+	useEffect(() => {
+		serverStateRef.current = serverState
+	}, [serverState])
+
 	useEffect(() => {
 		const id = setInterval(() => {
+			const current = serverStateRef.current
 			const src = selectedSessionId
-				? serverState.sessions.filter((s) => s.id === selectedSessionId)
-				: serverState.sessions
+				? current.sessions.filter((s) => s.id === selectedSessionId)
+				: current.sessions
 			const totalRecv = src.reduce((sum, s) => sum + (s.bytesRecv ?? 0), 0)
 			const totalSent = src.reduce((sum, s) => sum + (s.bytesSent ?? 0), 0)
 			const deltaRecv =
@@ -151,19 +157,19 @@ function DebugScreen() {
 						t: nowLabel(),
 						recvKBps: Math.round(deltaRecv * 10) / 10,
 						sentKBps: Math.round(deltaSent * 10) / 10,
-						latencyMs: serverState.latencyMs ?? 0,
+						latencyMs: current.latencyMs ?? 0,
 					},
 				]
 				return next.length > 60 ? next.slice(-60) : next
 			})
 		}, 1000)
 		return () => clearInterval(id)
-	}, [selectedSessionId, serverState.sessions, serverState.latencyMs])
+	}, [selectedSessionId])
 
 	const [consoleTab, setConsoleTab] = useState<"server" | "client">("server")
 	const [levelFilter, setLevelFilter] = useState("ALL")
 	const [searchQuery, setSearchQuery] = useState("")
-	const [_copiedId, setCopiedId] = useState<string | null>(null)
+	const [copiedId, setCopiedId] = useState<string | null>(null)
 	const logEndRef = useRef<HTMLDivElement>(null)
 	const copyToClipboard = (id: string, text: string) => {
 		const done = () => {
@@ -296,11 +302,7 @@ function DebugScreen() {
 							<Wifi className="w-4 h-4 text-primary" />
 							<h2 className="font-bold text-sm">Network</h2>
 							<span className="ml-auto text-[10px] text-base-content/30 font-mono">
-								{selectedSessionId
-									? selectedSessionId
-										? selectedSessionId
-										: "Invalid Id"
-									: "all sessions"}
+								{selectedSessionId ? selectedSessionId : "all sessions"}
 							</span>
 						</div>
 						{/* Live-value strip */}
@@ -475,16 +477,7 @@ function DebugScreen() {
 									return (
 										<button
 											key={session.id}
-											tabIndex={0}
 											type="button"
-											onKeyDown={(e) =>
-												e.key === "Enter" &&
-												(() => {
-													const next = isSelected ? null : session.id
-													setSelectedSessionId(next)
-													setSearchQuery(next ? next.slice(0, 8) : "")
-												})()
-											}
 											onClick={() => {
 												const next = isSelected ? null : session.id
 												setSelectedSessionId(next)
@@ -658,6 +651,11 @@ function DebugScreen() {
 												</div>
 											)}
 									</div>
+									{copiedId === log.id && (
+										<span className="text-[10px] text-success font-semibold shrink-0">
+											Copied!
+										</span>
+									)}
 								</button>
 							))
 						)}

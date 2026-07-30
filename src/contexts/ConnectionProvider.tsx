@@ -66,6 +66,8 @@ export function ConnectionProvider({
 		}
 	}, [])
 
+	const lastReportTimeRef = useRef<number>(0)
+
 	const registerDataChannel = useCallback(
 		(unorderedDc: RTCDataChannel, orderedDc: RTCDataChannel) => {
 			unorderedDcRef.current = unorderedDc
@@ -96,12 +98,16 @@ export function ConnectionProvider({
 					if (parsed.type === "pong" && parsed.timestamp) {
 						const ms = Date.now() - parsed.timestamp
 						setLatency(ms)
-						// Report measured RTT to the host debug dashboard (best-effort)
-						fetch("/api/debug/report-latency", {
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ latencyMs: ms }),
-						}).catch(() => {})
+						// Report measured RTT to the host debug dashboard (throttled every 10s)
+						const now = Date.now()
+						if (now - lastReportTimeRef.current > 10000) {
+							lastReportTimeRef.current = now
+							fetch("/api/debug/report-latency", {
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({ latencyMs: ms }),
+							}).catch(() => {})
+						}
 					}
 				} catch {}
 			}
