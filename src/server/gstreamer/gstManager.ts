@@ -10,7 +10,7 @@ import { RTP_HOST, RTP_PORT } from "../constants"
 export class GstManager {
 	private process: ChildProcess | null = null
 	private provider: CaptureProvider | null = null
-
+	private stopping = false
 	private buildPipelineArgs(sourceBlocks: string[]): string[] {
 		const args = [...sourceBlocks]
 
@@ -51,7 +51,7 @@ export class GstManager {
 	}
 
 	public async start(): Promise<void> {
-		if (this.process) return
+		if (this.process || this.stopping) return
 
 		logger.info("Spawning GStreamer UDP engine")
 
@@ -132,17 +132,24 @@ export class GstManager {
 		if (this.process) {
 			logger.info("Terminating GStreamer video pipeline")
 			const proc = this.process
+			this.stopping = true
+			await new Promise<void>((resolve) => {
+				const killTimer = setTimeout(() => {
+					if (proc.exitCode === null) {
+						logger.warn(
+							"GStreamer process did not exit on SIGTERM, sending SIGKILL",
+						)
+						proc.kill("SIGKILL")
+					}
+				}, 2000)
+				proc.once("close", () => {
+					clearTimeout(killTimer)
+					resolve()
+				})
+				proc.kill("SIGTERM")
+			})
 			this.process = null
-			proc.kill("SIGTERM")
-			const killTimer = setTimeout(() => {
-				if (proc.exitCode === null) {
-					logger.warn(
-						"GStreamer process did not exit on SIGTERM, sending SIGKILL",
-					)
-					proc.kill("SIGKILL")
-				}
-			}, 2000)
-			proc.once("close", () => clearTimeout(killTimer))
+			this.stopping = false
 		}
 		await this.cleanup()
 	}

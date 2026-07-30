@@ -5,7 +5,7 @@ import { nitro } from "nitro/vite"
 import { defineConfig } from "vite"
 import serverConfig from "./src/server-config.json"
 import { attachSignalingRoutes } from "./src/server/server"
-import { printWelcome } from "./src/server/welcome"
+import { printWelcome } from "./src/utils/welcome"
 import react from "@vitejs/plugin-react"
 // biome-ignore lint/suspicious/noExplicitAny: Vite server instance
 const wireServer = (server: any) => {

@@ -90,7 +90,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		triggerRetry()
 	}, [triggerRetry])
 
-	const reconnect = () => {
+	const reconnect = useCallback(() => {
 		if (retryTimerRef.current) {
 			clearTimeout(retryTimerRef.current)
 			retryTimerRef.current = null
@@ -123,7 +123,7 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 		setVideoStream(null)
 		retryCountRef.current = 0
 		setReconnectAttempt((prev) => prev + 1)
-	}
+	}, [])
 
 	useEffect(() => {
 		if (!token) return

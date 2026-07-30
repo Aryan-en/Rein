@@ -112,6 +112,17 @@ function requireAuth(req: IncomingMessage, res: ServerResponse): boolean {
 	return true
 }
 
+function getEffectiveHostStatus():
+	| "stopped"
+	| "starting"
+	| "running"
+	| "error" {
+	if (hostStatus === "running" && webrtcManager?.hasError()) {
+		return "error"
+	}
+	return hostStatus
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: Vite server instance
 export function attachSignalingRoutes(server: any): void {
 	const httpServer = server.httpServer || server
@@ -153,7 +164,7 @@ export function attachSignalingRoutes(server: any): void {
 		if (pathname === "/api/host/start" && req.method === "POST") {
 			if (!requireAuth(req, res)) return
 			if (hostStatus === "running") {
-				json(res, 200, { status: hostStatus })
+				json(res, 200, { status: getEffectiveHostStatus() })
 				return
 			}
 			hostStatus = "starting"
@@ -168,7 +179,7 @@ export function attachSignalingRoutes(server: any): void {
 					hostStatus = "error"
 				})
 
-			json(res, 200, { status: hostStatus })
+			json(res, 200, { status: getEffectiveHostStatus() })
 			return
 		}
 
@@ -193,7 +204,7 @@ export function attachSignalingRoutes(server: any): void {
 
 		if (pathname === "/api/host/status" && req.method === "GET") {
 			if (!requireAuth(req, res)) return
-			json(res, 200, { status: hostStatus })
+			json(res, 200, { status: getEffectiveHostStatus() })
 			return
 		}
 
@@ -241,7 +252,7 @@ export function attachSignalingRoutes(server: any): void {
 				(s) => s.hasInputConnection,
 			).length
 			json(res, 200, {
-				hostStatus,
+				hostStatus: getEffectiveHostStatus(),
 				sessionCount: sessions.length,
 				sessions,
 				inputConnectionCount,

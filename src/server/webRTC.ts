@@ -43,7 +43,7 @@ export interface SessionSnapshot {
 
 export class WebRTCManager {
 	private wss: WebSocketServer
-	private udpSocket: dgram.Socket
+	private udpSocket: dgram.Socket | null = null
 	private serverRef: EventEmitter
 	private upgradeHandler: (
 		request: IncomingMessage,
@@ -52,10 +52,15 @@ export class WebRTCManager {
 	) => void
 	private clients = new Map<string, ClientSession>()
 	private sessionCreatedAt = new Map<string, number>()
+	private isUdpBound = false
+	private udpError = false
+	private isShutdown = false
+	private rebindTimer: NodeJS.Timeout | null = null
+	private rebindBackoffMs = 500
+	private readonly maxBackoffMs = 10000
 
 	constructor(server: EventEmitter) {
 		this.wss = new WebSocketServer({ noServer: true })
-		this.udpSocket = dgram.createSocket("udp4")
 		this.serverRef = server
 
 		this.upgradeHandler = (
@@ -96,29 +101,86 @@ export class WebRTCManager {
 	}
 
 	private setupUdpSocket() {
-		this.udpSocket.on("error", (err) => {
-			logger.error(`UDP socket error:\n${err.stack}`)
+		if (this.isShutdown) return
+
+		if (this.rebindTimer) {
+			clearTimeout(this.rebindTimer)
+			this.rebindTimer = null
+		}
+
+		if (this.udpSocket) {
 			try {
+				this.udpSocket.removeAllListeners()
 				this.udpSocket.close()
 			} catch {}
-		})
+			this.udpSocket = null
+		}
 
-		this.udpSocket.on("message", (msg) => {
-			for (const client of this.clients.values()) {
-				try {
-					client.videoTrack.writeRtp(msg)
-					client.bytesSent += msg.length
-				} catch (_err) {
-					// Ignore individual track write errors
+		try {
+			const socket = dgram.createSocket("udp4")
+			this.udpSocket = socket
+
+			socket.on("error", (err) => {
+				logger.error(`UDP socket error:\n${err.stack ?? err}`)
+				this.handleUdpFailure()
+			})
+
+			socket.on("message", (msg) => {
+				for (const client of this.clients.values()) {
+					try {
+						client.videoTrack.writeRtp(msg)
+						client.bytesSent += msg.length
+					} catch (_err) {
+						// Ignore individual track write errors
+					}
 				}
-			}
-		})
+			})
 
-		this.udpSocket.bind(RTP_PORT, RTP_HOST, () => {
-			logger.info(
-				`UDP socket listening for RTP packets on ${RTP_HOST}:${RTP_PORT}`,
+			socket.bind(RTP_PORT, RTP_HOST, () => {
+				logger.info(
+					`UDP socket listening for RTP packets on ${RTP_HOST}:${RTP_PORT}`,
+				)
+				this.isUdpBound = true
+				this.udpError = false
+				this.rebindBackoffMs = 500
+			})
+		} catch (err) {
+			logger.error(`Failed to create/bind UDP socket: ${String(err)}`)
+			this.handleUdpFailure()
+		}
+	}
+
+	private handleUdpFailure() {
+		this.isUdpBound = false
+		this.udpError = true
+
+		if (this.udpSocket) {
+			try {
+				this.udpSocket.removeAllListeners()
+				this.udpSocket.close()
+			} catch {}
+			this.udpSocket = null
+		}
+
+		if (this.isShutdown) return
+
+		if (!this.rebindTimer) {
+			const delay = this.rebindBackoffMs
+			logger.warn(`Scheduling UDP socket rebind in ${delay}ms`)
+			this.rebindTimer = setTimeout(() => {
+				this.rebindTimer = null
+				this.setupUdpSocket()
+			}, delay)
+
+			this.rebindBackoffMs = Math.min(
+				this.rebindBackoffMs * 2,
+				this.maxBackoffMs,
 			)
-		})
+		}
+	}
+
+	public hasError(): boolean {
+		return this.udpError || !this.isUdpBound
 	}
 
 	private getInitialConfig(): Partial<InputConfig> {
@@ -299,6 +361,9 @@ export class WebRTCManager {
 			try {
 				client.inputHandler.destroy()
 			} catch (_e) {}
+			try {
+				client.ws.close()
+			} catch (_e) {}
 			this.clients.delete(sessionId)
 			this.sessionCreatedAt.delete(sessionId)
 		}
@@ -329,13 +394,22 @@ export class WebRTCManager {
 	}
 
 	public shutdown() {
+		this.isShutdown = true
+		if (this.rebindTimer) {
+			clearTimeout(this.rebindTimer)
+			this.rebindTimer = null
+		}
 		if (this.serverRef && typeof this.serverRef.off === "function") {
 			this.serverRef.off("upgrade", this.upgradeHandler)
 		}
 		this.wss.close()
-		try {
-			this.udpSocket.close()
-		} catch {}
+		if (this.udpSocket) {
+			try {
+				this.udpSocket.removeAllListeners()
+				this.udpSocket.close()
+			} catch {}
+			this.udpSocket = null
+		}
 		for (const sessionId of this.clients.keys()) {
 			this.cleanupClient(sessionId)
 		}

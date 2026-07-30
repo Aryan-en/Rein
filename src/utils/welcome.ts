@@ -1,23 +1,30 @@
-import { i18n } from "../utils/i18n"
-import { getLanIp } from "../utils/net"
-
+import { i18n } from "./i18n"
+import { getLanIp } from "./net"
+import fs from "node:fs"
+import { fileURLToPath } from "node:url"
 const str = i18n.en.server
 
 export function printWelcome(port: number): void {
 	const local = `http://localhost:${port}`
 	const network = `http://${getLanIp()}:${port}`
 	const debug = `${local}/debug`
-
 	const bold = (t: string) => `\x1b[1m${t}\x1b[0m`
 	const cyan = (t: string) => `\x1b[36m${t}\x1b[0m`
 	const green = (t: string) => `\x1b[32m${t}\x1b[0m`
 	const gray = (t: string) => `\x1b[90m${t}\x1b[0m`
-
 	const divider = gray("────────────────────────────────────────────────────")
-
 	const row = (label: string, value: string, color = green) =>
 		`${gray(label.padEnd(10))} ${color(value)}`
 
+	const configPath = fileURLToPath(
+		new URL("../server-config.json", import.meta.url),
+	)
+	//If logs enabled dont print welcomescreen
+	const raw = fs.readFileSync(configPath, "utf-8")
+	const cfg = JSON.parse(raw) as { verboseLogs?: boolean }
+	let verboseLogs = false
+	verboseLogs = cfg.verboseLogs === true
+	if (verboseLogs) return
 	process.stdout.write(
 		[
 			"",
