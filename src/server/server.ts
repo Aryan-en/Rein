@@ -11,7 +11,7 @@ import {
 import { GstManager } from "./gstreamer/gstManager"
 import { WebRTCManager } from "./webRTC"
 import type { InputConfig } from "./types"
-import { getLanIp } from "./net"
+import { getLanIp, isLoopbackAddress } from "../utils/net"
 
 let gstManager: GstManager | null = null
 let webrtcManager: WebRTCManager | null = null
@@ -92,8 +92,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 
 function requireAuth(req: IncomingMessage, res: ServerResponse): boolean {
 	const addr = req.socket.remoteAddress
-	const isLocal =
-		addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1"
+	const isLocal = isLoopbackAddress(addr)
 	if (isLocal) return true
 
 	const authHeader = req.headers.authorization ?? ""
@@ -206,8 +205,7 @@ export function attachSignalingRoutes(server: any): void {
 
 		if (pathname === "/api/auth/token" && req.method === "POST") {
 			const addr = req.socket.remoteAddress
-			const isLocal =
-				addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1"
+			const isLocal = isLoopbackAddress(addr)
 			if (!isLocal) {
 				json(res, 403, { error: "Localhost only" })
 				return

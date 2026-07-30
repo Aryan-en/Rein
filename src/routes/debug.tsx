@@ -12,6 +12,7 @@ import {
 	ResponsiveContainer,
 } from "recharts"
 import { useClientLogs } from "../contexts/DebugContext"
+import { t } from "../utils/i18n"
 
 export const Route = createFileRoute("/debug")({
 	component: DebugScreen,
@@ -59,9 +60,9 @@ function nowLabel(): string {
 
 function fmtAge(createdAt: number): string {
 	const s = Math.floor((Date.now() - createdAt) / 1000)
-	if (s < 60) return `${s}s ago`
-	if (s < 3600) return `${Math.floor(s / 60)}m ago`
-	return `${Math.floor(s / 3600)}h ago`
+	if (s < 60) return t("debug", "secondsAgo", { s })
+	if (s < 3600) return t("debug", "minutesAgo", { m: Math.floor(s / 60) })
+	return t("debug", "hoursAgo", { h: Math.floor(s / 3600) })
 }
 
 function DebugScreen() {
@@ -220,6 +221,19 @@ function DebugScreen() {
 		}
 	}
 
+	const hostStatusLabels: Record<ServerState["hostStatus"], string> = {
+		stopped: t("debug", "statusStopped"),
+		starting: t("debug", "statusStarting"),
+		running: t("debug", "statusRunning"),
+		error: t("debug", "statusError"),
+	}
+
+	const sessionStateLabels: Record<string, string> = {
+		connected: t("debug", "sessionConnected"),
+		answered: t("debug", "sessionAnswered"),
+		offering: t("debug", "sessionOffering"),
+	}
+
 	const hostStatusCls = {
 		running: "text-success",
 		starting: "text-warning",
@@ -257,17 +271,17 @@ function DebugScreen() {
 				<div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono text-xs">
 					{[
 						{
-							label: "GStreamer",
-							value: serverState.hostStatus,
+							label: t("debug", "gstreamer"),
+							value: hostStatusLabels[serverState.hostStatus],
 							cls: hostStatusCls,
 						},
 						{
-							label: "Active Sessions",
+							label: t("debug", "activeSessions"),
 							value: String(serverState.sessionCount),
 							cls: serverState.sessionCount > 0 ? "text-success" : "",
 						},
 						{
-							label: "Viewers (SSE)",
+							label: t("debug", "viewersSse"),
 							value: String(
 								serverState.sessions.reduce((a, s) => a + s.sseViewerCount, 0),
 							),
@@ -276,7 +290,7 @@ function DebugScreen() {
 								: "",
 						},
 						{
-							label: "Input Channels",
+							label: t("debug", "inputChannels"),
 							value: String(serverState.inputConnectionCount),
 							cls: serverState.inputConnectionCount > 0 ? "text-success" : "",
 						},
@@ -300,9 +314,11 @@ function DebugScreen() {
 						{/* Header row */}
 						<div className="flex items-center gap-2 flex-wrap">
 							<Wifi className="w-4 h-4 text-primary" />
-							<h2 className="font-bold text-sm">Network</h2>
+							<h2 className="font-bold text-sm">{t("debug", "network")}</h2>
 							<span className="ml-auto text-[10px] text-base-content/30 font-mono">
-								{selectedSessionId ? selectedSessionId : "all sessions"}
+								{selectedSessionId
+									? selectedSessionId
+									: t("debug", "allSessions")}
 							</span>
 						</div>
 						{/* Live-value strip */}
@@ -311,39 +327,39 @@ function DebugScreen() {
 							<div className="bg-base-200 rounded px-3 py-2 border border-base-300 flex flex-col gap-0.5">
 								<span className="text-[10px] text-base-content/50 flex items-center gap-1">
 									<span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
-									Latency
+									{t("debug", "latency")}
 								</span>
 								<span className={`text-base font-bold ${latColor}`}>
-									{latest?.latencyMs ?? 0} ms
+									{t("debug", "latencyMs", { ms: latest?.latencyMs ?? 0 })}
 								</span>
 								<span className="text-[9px] text-base-content/30">
-									peak {maxLat} ms
+									{t("debug", "peakMs", { ms: maxLat })}
 								</span>
 							</div>
 							{/* Video recv */}
 							<div className="bg-base-200 rounded px-3 py-2 border border-base-300 flex flex-col gap-0.5">
 								<span className="text-[10px] text-base-content/50 flex items-center gap-1">
 									<span className="inline-block w-2 h-2 rounded-full bg-cyan-400" />
-									Video Recv
+									{t("debug", "videoRecv")}
 								</span>
 								<span className="text-base font-bold text-cyan-400">
-									{latest?.recvKBps ?? 0} KB/s
+									{t("debug", "kbpsValue", { val: latest?.recvKBps ?? 0 })}
 								</span>
 								<span className="text-[9px] text-base-content/30">
-									peak {maxRecv.toFixed(1)} KB/s
+									{t("debug", "peakKbps", { val: maxRecv.toFixed(1) })}
 								</span>
 							</div>
 							{/* Input sent */}
 							<div className="bg-base-200 rounded px-3 py-2 border border-base-300 flex flex-col gap-0.5">
 								<span className="text-[10px] text-base-content/50 flex items-center gap-1">
 									<span className="inline-block w-2 h-2 rounded-full bg-violet-400" />
-									Input Sent
+									{t("debug", "inputSent")}
 								</span>
 								<span className="text-base font-bold text-violet-400">
-									{latest?.sentKBps ?? 0} KB/s
+									{t("debug", "kbpsValue", { val: latest?.sentKBps ?? 0 })}
 								</span>
 								<span className="text-[9px] text-base-content/30">
-									peak {maxSent.toFixed(1)} KB/s
+									{t("debug", "peakKbps", { val: maxSent.toFixed(1) })}
 								</span>
 							</div>
 						</div>
@@ -410,13 +426,22 @@ function DebugScreen() {
 												>
 													<div className="text-base-content/50 mb-1">{d.t}</div>
 													<div style={{ color: "#fb923c" }}>
-														Latency: <strong>{d.latencyMs} ms</strong>
+														{t("debug", "latency")}:{" "}
+														<strong>
+															{t("debug", "latencyMs", { ms: d.latencyMs })}
+														</strong>
 													</div>
 													<div style={{ color: "#22d3ee" }}>
-														Video Recv: <strong>{d.recvKBps} KB/s</strong>
+														{t("debug", "videoRecv")}:{" "}
+														<strong>
+															{t("debug", "kbpsValue", { val: d.recvKBps })}
+														</strong>
 													</div>
 													<div style={{ color: "#a78bfa" }}>
-														Input Sent: <strong>{d.sentKBps} KB/s</strong>
+														{t("debug", "inputSent")}:{" "}
+														<strong>
+															{t("debug", "kbpsValue", { val: d.sentKBps })}
+														</strong>
 													</div>
 												</div>
 											)
@@ -426,7 +451,7 @@ function DebugScreen() {
 									<Line
 										type="monotone"
 										dataKey="latNorm"
-										name="Latency"
+										name={t("debug", "latency")}
 										stroke="#fb923c"
 										strokeWidth={2}
 										dot={false}
@@ -436,7 +461,7 @@ function DebugScreen() {
 									<Area
 										type="monotone"
 										dataKey="recvNorm"
-										name="Video Recv"
+										name={t("debug", "videoRecv")}
 										stroke="#22d3ee"
 										strokeWidth={1.5}
 										fill="url(#gRecv)"
@@ -447,7 +472,7 @@ function DebugScreen() {
 									<Area
 										type="monotone"
 										dataKey="sentNorm"
-										name="Input Sent"
+										name={t("debug", "inputSent")}
 										stroke="#a78bfa"
 										strokeWidth={1.5}
 										fill="url(#gSent)"
@@ -463,13 +488,15 @@ function DebugScreen() {
 					<div className="bg-base-100 border border-base-200 rounded p-5 flex flex-col gap-3">
 						<div className="flex items-center gap-2 mb-1">
 							<Users className="w-4 h-4 text-secondary" />
-							<h2 className="font-bold text-sm">Client Sessions</h2>
+							<h2 className="font-bold text-sm">
+								{t("debug", "clientSessions")}
+							</h2>
 						</div>
 
 						<div className="font-mono text-[11px] flex-1 space-y-2 space-x-2 overflow-y-auto max-h-72">
 							{serverState.sessions.length === 0 ? (
 								<div className="text-base-content/30 text-center py-8 italic font-sans text-xs">
-									No active sessions
+									{t("debug", "noActiveSessions")}
 								</div>
 							) : (
 								serverState.sessions.map((session) => {
@@ -506,12 +533,12 @@ function DebugScreen() {
 																: "bg-neutral-800 text-neutral-300 border-neutral-700"
 													}`}
 												>
-													{session.state}
+													{sessionStateLabels[session.state] ?? session.state}
 												</span>
 											</div>
 											<div className="grid grid-cols-2 gap-1 text-[10px]">
 												<div className="text-base-content/60">
-													WS peers:{" "}
+													{t("debug", "wsPeers")}:{" "}
 													<span
 														className={
 															session.sseViewerCount > 0
@@ -523,7 +550,7 @@ function DebugScreen() {
 													</span>
 												</div>
 												<div className="text-base-content/60">
-													Input DC:{" "}
+													{t("debug", "inputDc")}:{" "}
 													<span
 														className={
 															session.hasInputConnection
@@ -531,7 +558,9 @@ function DebugScreen() {
 																: "text-base-content/40"
 														}
 													>
-														{session.hasInputConnection ? "open" : "none"}
+														{session.hasInputConnection
+															? t("debug", "dcOpen")
+															: t("debug", "dcNone")}
 													</span>
 												</div>
 												<div className="text-base-content/40 col-span-2">
@@ -552,21 +581,23 @@ function DebugScreen() {
 					<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 pb-3 border-b border-base-200">
 						<div className="flex items-center gap-2 flex-wrap">
 							<Terminal className="w-4 h-4 text-primary shrink-0" />
-							<span className="font-bold text-sm">Log Console</span>
+							<span className="font-bold text-sm">
+								{t("debug", "logConsole")}
+							</span>
 							<div className="join border border-base-300 rounded overflow-hidden font-mono text-[11px]">
 								<button
 									type="button"
 									onClick={() => setConsoleTab("server")}
 									className={`join-item btn btn-xs px-3 border-none ${consoleTab === "server" ? "btn-primary" : "btn-ghost"}`}
 								>
-									Server ({serverLogs.length})
+									{t("debug", "serverTab", { count: serverLogs.length })}
 								</button>
 								<button
 									type="button"
 									onClick={() => setConsoleTab("client")}
 									className={`join-item btn btn-xs px-3 border-none ${consoleTab === "client" ? "btn-primary" : "btn-ghost"}`}
 								>
-									Client ({clientLogs.length})
+									{t("debug", "clientTab", { count: clientLogs.length })}
 								</button>
 							</div>
 						</div>
@@ -575,7 +606,7 @@ function DebugScreen() {
 							<div className="relative">
 								<input
 									type="text"
-									placeholder="Filter"
+									placeholder={t("debug", "filterPlaceholder")}
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									className="input input-xs input-bordered pl-8 w-36 sm:w-44 font-mono text-[11px] rounded"
@@ -583,16 +614,24 @@ function DebugScreen() {
 							</div>
 
 							<div className="join border border-base-300 rounded overflow-hidden">
-								{["ALL", "INFO", "WARN", "ERROR"].map((lvl) => (
-									<button
-										key={lvl}
-										type="button"
-										onClick={() => setLevelFilter(lvl)}
-										className={`join-item btn btn-xs font-mono text-[10px] px-2 border-none ${levelFilter === lvl ? "btn-neutral" : "btn-ghost text-base-content/70"}`}
-									>
-										{lvl}
-									</button>
-								))}
+								{(["ALL", "INFO", "WARN", "ERROR"] as const).map((lvl) => {
+									const levelLabels: Record<string, string> = {
+										ALL: t("debug", "filterAll"),
+										INFO: t("debug", "filterInfo"),
+										WARN: t("debug", "filterWarn"),
+										ERROR: t("debug", "filterError"),
+									}
+									return (
+										<button
+											key={lvl}
+											type="button"
+											onClick={() => setLevelFilter(lvl)}
+											className={`join-item btn btn-xs font-mono text-[10px] px-2 border-none ${levelFilter === lvl ? "btn-neutral" : "btn-ghost text-base-content/70"}`}
+										>
+											{levelLabels[lvl]}
+										</button>
+									)
+								})}
 							</div>
 							<button
 								type="button"
@@ -603,7 +642,7 @@ function DebugScreen() {
 								}}
 							>
 								<Trash2 className="w-3.5 h-3.5" />
-								Clear
+								{t("debug", "clear")}
 							</button>
 						</div>
 					</div>
@@ -612,7 +651,7 @@ function DebugScreen() {
 					<div className="bg-[#0d1117] text-neutral-200 rounded border border-neutral-800 p-4 font-mono text-[11px] overflow-y-auto max-h-96 space-y-1.5">
 						{filteredLogs.length === 0 ? (
 							<div className="text-neutral-500 text-center py-16 italic font-sans text-xs">
-								No log records for the current filter.
+								{t("debug", "noLogRecords")}
 							</div>
 						) : (
 							filteredLogs.map((log) => (
@@ -653,7 +692,7 @@ function DebugScreen() {
 									</div>
 									{copiedId === log.id && (
 										<span className="text-[10px] text-success font-semibold shrink-0">
-											Copied!
+											{t("debug", "copied")}
 										</span>
 									)}
 								</button>

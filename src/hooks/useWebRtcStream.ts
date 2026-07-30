@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useConnection } from "../contexts/ConnectionProvider"
-
+import { t } from "../utils/i18n"
 interface UseWebRtcStreamOptions {
 	token: string | null
 }
@@ -16,7 +16,6 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 	const [connecting, setConnecting] = useState(false)
 	const [reconnectAttempt, setReconnectAttempt] = useState(0)
 	const { registerDataChannel, send: sendInputEvent } = useConnection()
-
 	const pcRef = useRef<RTCPeerConnection | null>(null)
 	const wsRef = useRef<WebSocket | null>(null)
 	const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -45,9 +44,8 @@ export function useWebRtcStream({ token }: UseWebRtcStreamOptions) {
 				`[WebRTC] Max retry attempts (${MAX_RETRIES}) reached. Stopping retries.`,
 			)
 			setConnecting(false)
-			setErrorHandle("Connection Failed")
-			setError("Failed to establish stream session after multiple attempts")
-			isRetryingRef.current = false
+			setErrorHandle(t("errorComponent", "connectionFailedTitle"))
+			setError(t("errorComponent", "connectionFailedBody"))
 			return
 		}
 

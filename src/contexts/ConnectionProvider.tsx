@@ -102,11 +102,25 @@ export function ConnectionProvider({
 						const now = Date.now()
 						if (now - lastReportTimeRef.current > 10000) {
 							lastReportTimeRef.current = now
+							const token =
+								typeof window !== "undefined"
+									? new URLSearchParams(window.location.search).get("token") ||
+										localStorage.getItem("rein_auth_token")
+									: null
 							fetch("/api/debug/report-latency", {
 								method: "POST",
-								headers: { "Content-Type": "application/json" },
+								headers: {
+									"Content-Type": "application/json",
+									...(token ? { Authorization: `Bearer ${token}` } : {}),
+								},
 								body: JSON.stringify({ latencyMs: ms }),
-							}).catch(() => {})
+							})
+								.then((res) => {
+									if (!res.ok) {
+										console.error("Failed to report latency:", res.status)
+									}
+								})
+								.catch(() => {})
 						}
 					}
 				} catch {}

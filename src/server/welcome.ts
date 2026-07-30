@@ -1,5 +1,5 @@
 import { i18n } from "../utils/i18n"
-import { getLanIp } from "./net"
+import { getLanIp } from "../utils/net"
 
 const str = i18n.en.server
 
