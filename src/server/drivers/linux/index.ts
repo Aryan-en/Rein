@@ -260,12 +260,12 @@ export class LinuxInputInjector {
 		const touchOk = this.setupTouchDevice()
 
 		if (!mouseOk || !kbOk || !touchOk) {
-			console.error(
-				"[LinuxInputInjector] One or more devices failed to initialize",
-			)
+			const msg =
+				"One or more virtual uinput devices failed to initialize (check /dev/uinput permissions)"
+			console.error(`[LinuxInputInjector] ${msg}`)
 			this.destroy()
-			this.initialized = mouseOk
-			return
+			this.initialized = false
+			throw new Error(msg)
 		}
 
 		this.keyboard = new LinuxKeyboard(this.kbDev.fd)

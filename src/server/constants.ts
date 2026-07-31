@@ -22,3 +22,5 @@ export const MAX_KEY_LENGTH = 50
 export const ACCEL_THRESHOLD = 1
 export const ACCEL_FACTOR = 0.8
 export const ACCEL_EXPONENT = 1.2
+export const RTP_HOST = "127.0.0.1"
+export const RTP_PORT = 5004

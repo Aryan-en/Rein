@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import winston from "winston"
 
 // dynamic log path (similar to logPath() requirement)
@@ -16,6 +17,21 @@ try {
 	// If we can't create the log dir, fall back to stderr only — don't crash.
 	process.stderr.write(
 		`[logger] Failed to create log directory ${LOG_DIR}: ${err instanceof Error ? err.message : String(err)}\n`,
+	)
+}
+
+// Read verboseLogs flag from server-config.json (defaults to false if missing/unreadable)
+let verboseLogs = false
+try {
+	const configPath = fileURLToPath(
+		new URL("../server-config.json", import.meta.url),
+	)
+	const raw = fs.readFileSync(configPath, "utf-8")
+	const cfg = JSON.parse(raw) as { verboseLogs?: boolean }
+	verboseLogs = cfg.verboseLogs === true
+} catch (err: unknown) {
+	process.stderr.write(
+		`[logger] Server config read notice: ${err instanceof Error ? err.message : String(err)}\n`,
 	)
 }
 
@@ -39,8 +55,8 @@ const logger = winston.createLogger({
 	rejectionHandlers: [new winston.transports.File({ filename: LOG_FILE })],
 })
 
-// If we're not in production then log to the `console`
-if (process.env.NODE_ENV !== "production") {
+// Only print to terminal when verboseLogs is explicitly enabled in server-config.json
+if (verboseLogs) {
 	logger.add(
 		new winston.transports.Console({
 			format: winston.format.combine(
@@ -52,11 +68,16 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Optional: Intercept standard console.log and redirect to winston
-const _originalConsoleLog = console.log
-const _originalConsoleError = console.error
 
-const serialize = (a: unknown): string =>
-	typeof a === "string" ? a : JSON.stringify(a)
+const serialize = (a: unknown): string => {
+	if (typeof a === "string") return a
+	if (a instanceof Error) return a.stack || a.message
+	try {
+		return JSON.stringify(a)
+	} catch {
+		return String(a)
+	}
+}
 
 console.log = (...args: unknown[]) => {
 	logger.info(args.map(serialize).join(" "))

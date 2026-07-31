@@ -5,7 +5,19 @@ import { nitro } from "nitro/vite"
 import { defineConfig } from "vite"
 import serverConfig from "./src/server-config.json"
 import { attachSignalingRoutes } from "./src/server/server"
+import { printWelcome } from "./src/utils/welcome"
 import react from "@vitejs/plugin-react"
+// biome-ignore lint/suspicious/noExplicitAny: Vite server instance
+const wireServer = (server: any) => {
+	attachSignalingRoutes(server)
+	server.httpServer?.once("listening", () => {
+		const addr = server.httpServer?.address()
+		const port =
+			addr && typeof addr === "object" ? addr.port : serverConfig.frontendPort
+		printWelcome(port)
+	})
+}
+
 const config = defineConfig({
 	base: "/",
 	resolve: {
@@ -16,16 +28,8 @@ const config = defineConfig({
 	plugins: [
 		{
 			name: "rein-server",
-			async configureServer(server) {
-				const httpServer = server.httpServer
-				if (!httpServer) return
-				attachSignalingRoutes(httpServer)
-			},
-			async configurePreviewServer(server) {
-				const httpServer = server.httpServer
-				if (!httpServer) return
-				attachSignalingRoutes(httpServer)
-			},
+			configureServer: wireServer,
+			configurePreviewServer: wireServer,
 		},
 		devtools(),
 		nitro(),
@@ -37,7 +41,7 @@ const config = defineConfig({
 		}),
 	],
 	ssr: {
-		external: ["node-datachannel", "dbus-next", "eventsource"],
+		external: ["dbus-next", "eventsource", "werift"],
 		noExternal: ["tailwindcss", "@tailwindcss/postcss"],
 	},
 	server: {
@@ -46,7 +50,7 @@ const config = defineConfig({
 	},
 	build: {
 		rollupOptions: {
-			external: ["node-datachannel"],
+			external: ["werift"],
 		},
 	},
 })

@@ -42,7 +42,7 @@ const POINTER_TOUCH_INFO = koffi.struct("POINTER_TOUCH_INFO", {
 	pressure: "uint32",
 })
 
-const _POINTER_TYPE_INFO = koffi.struct("POINTER_TYPE_INFO", {
+export const _POINTER_TYPE_INFO = koffi.struct("POINTER_TYPE_INFO", {
 	type: "uint32",
 	touchInfo: POINTER_TOUCH_INFO,
 })

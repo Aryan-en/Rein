@@ -1,128 +1,77 @@
-/**
- * GStreamer pipeline process manager.
- *
- * Spawns and monitors the gst-launch-1.0 process for capturing and encoding
- * the screen video stream, and streaming it via WHIP signaling client.
- */
-
 import { spawn, type ChildProcess } from "node:child_process"
-import EventEmitter from "node:events"
 import os from "node:os"
 import fs from "node:fs"
 import path from "node:path"
 import logger from "../../utils/logger"
 import { type CaptureProvider, createCaptureProvider } from "./captureProvider"
 import { resolveGstPaths } from "./gstPaths"
+import { RTP_HOST, RTP_PORT } from "../constants"
 
-export class GstManager extends EventEmitter {
+export class GstManager {
 	private process: ChildProcess | null = null
-	private sessionId: string
-	private intentionalStop = false
 	private provider: CaptureProvider | null = null
-
-	constructor(sessionId: string) {
-		super()
-		this.sessionId = sessionId
-	}
-
-	private buildPipelineArgs(
-		sourceBlocks: string[],
-		token: string,
-		whipPort: number,
-	): string[] {
-		const platform = os.platform()
+	private stopping = false
+	private buildPipelineArgs(sourceBlocks: string[]): string[] {
 		const args = [...sourceBlocks]
 
-		// Build the common suffix byte-for-byte identically to the old implementation
-		if (platform !== "win32") {
-			args.push(
-				"!",
-				"queue",
-				"max-size-buffers=5",
-				"leaky=downstream",
-				"!",
-				"videoconvert",
-				"!",
-				"videoscale",
-				"!",
-				"videorate",
-			)
-		} else {
-			// Windows already appended d3d11convert/download in the source block
-			args.push("!", "videoconvert", "!", "videorate")
-		}
-
-		if (platform === "darwin") {
-			args.push(
-				"!",
-				"video/x-raw,format=NV12,framerate=30/1",
-				"!",
-				"vtenc_h264",
-				"realtime=true",
-				"max-keyframe-interval=15",
-				"allow-frame-reordering=false",
-				"bitrate=2500",
-				"!",
-				"h264parse",
-				"config-interval=-1",
-			)
-		} else {
-			args.push(
-				"!",
-				"video/x-raw,framerate=30/1",
-				"!",
-				"vp8enc",
-				"deadline=1",
-				"keyframe-max-dist=15",
-				"target-bitrate=2500000",
-			)
-		}
-
-		// Add WHIP sink
 		args.push(
 			"!",
-			"whipclientsink",
-			`signaller::whip-endpoint=http://localhost:${whipPort}/api/webrtc/whip?sessionId=${this.sessionId}&token=${token}`,
-			`signaller::auth-token=Bearer_${token}`,
+			"queue",
+			"max-size-buffers=1",
+			"leaky=downstream",
+			"!",
+			"videoconvert",
+			"!",
+			"videorate",
+			"!",
+			"video/x-raw,framerate=60/1",
+			"!",
+			"x264enc",
+			"tune=zerolatency",
+			"speed-preset=ultrafast",
+			"key-int-max=30",
+			"byte-stream=false",
+			"!",
+			"h264parse",
+			"!",
+			"video/x-h264,profile=baseline",
+			"!",
+			"rtph264pay",
+			"config-interval=-1",
+			"pt=96",
+			"!",
+			"udpsink",
+			`host=${RTP_HOST}`,
+			`port=${RTP_PORT}`,
+			"sync=false",
+			"async=false",
 		)
 
 		return args
 	}
 
-	public async start(token: string, whipPort: number): Promise<void> {
-		if (this.process) return
-		this.intentionalStop = false
+	public async start(): Promise<void> {
+		if (this.process || this.stopping) return
 
-		logger.info("Spawning GStreamer WHIP engine")
+		logger.info("Spawning GStreamer UDP engine")
 
 		try {
 			this.provider = createCaptureProvider()
 			await this.provider.initialize(async (err) => {
 				logger.error(`Capture provider failed after startup: ${err.message}`)
-				if (this.process) {
-					this.intentionalStop = true
-					this.stop()
-					await this.cleanup()
-				} else {
-					await this.cleanup()
-				}
-				this.emit("capture-failure", err)
+				await this.stop()
 			})
 			const sourceBlocks = await this.provider.getGStreamerSource()
-			const pipelineArgs = this.buildPipelineArgs(sourceBlocks, token, whipPort)
-			this.executePipeline(pipelineArgs, whipPort, token)
+			const pipelineArgs = this.buildPipelineArgs(sourceBlocks)
+			this.executePipeline(pipelineArgs)
 		} catch (error) {
 			logger.error(`Capture initialization failed: ${String(error)}`)
-			this.emit("capture-failure", error)
 			await this.cleanup()
+			throw error
 		}
 	}
 
-	private executePipeline(
-		pipelineArgs: string[],
-		whipPort: number,
-		token: string,
-	): void {
+	private executePipeline(pipelineArgs: string[]): void {
 		const gst = resolveGstPaths()
 		const spawnedEnv = { ...process.env, ...gst.env }
 		if (!spawnedEnv.DISPLAY) spawnedEnv.DISPLAY = ":0"
@@ -144,14 +93,16 @@ export class GstManager extends EventEmitter {
 			}
 		}
 
+		logger.info(`GStreamer args: gst-launch-1.0 ${pipelineArgs.join(" ")}`)
 		this.process = spawn(gst.gstLaunch, pipelineArgs, { env: spawnedEnv })
+
 		this.process.on("error", async (err) => {
 			logger.error(`GStreamer spawn failed: ${err.message}`)
 			this.process = null
 			await this.cleanup()
-			this.emit("capture-failure", err)
 			return
 		})
+
 		this.process.stdout?.on("data", (data: Buffer) => {
 			const output = data.toString()
 			if (output.includes("State change") && output.includes("PLAYING")) {
@@ -160,25 +111,13 @@ export class GstManager extends EventEmitter {
 		})
 
 		this.process.stderr?.on("data", (data: Buffer) => {
-			let logStr = data.toString()
-			logStr = logStr.replace(/auth-token=\S+/g, "auth-token=REDACTED")
+			const logStr = data.toString()
 			if (
-				logStr.includes("ERROR") &&
-				logStr.includes("pipeline doesn't want to preroll")
-			) {
-				if (this.intentionalStop) return
-				logger.error(
-					"GStreamer pipeline failed to preroll, starting loopback fallback",
-				)
-				this.intentionalStop = true
-				this.stop()
-				this.triggerTestFallbackPipeline(whipPort, token)
-			} else if (
 				logStr.includes("WARN") ||
 				logStr.includes("error") ||
 				logStr.includes("ERROR")
 			) {
-				logger.warn(`GStreamer [${this.sessionId}]: ${logStr.trim()}`)
+				logger.warn(`GStreamer: ${logStr.trim()}`)
 			}
 		})
 
@@ -186,67 +125,33 @@ export class GstManager extends EventEmitter {
 			logger.info(`GStreamer process exited with status: ${code}`)
 			this.process = null
 			await this.cleanup()
-			if (!this.intentionalStop) {
-				this.emit("exit")
-			}
 		})
 	}
 
-	private triggerTestFallbackPipeline(serverPort: number, token: string): void {
-		logger.info("Launching loopback video test pattern")
-		// (Existing fallback code remains identical)
-		const pipelineArgs = [
-			"videotestsrc",
-			"is-live=true",
-			"pattern=ball",
-			"!",
-			"video/x-raw,framerate=30/1",
-			"!",
-			"videoconvert",
-			"!",
-			"vp8enc",
-			"deadline=1",
-			"keyframe-max-dist=15",
-			"target-bitrate=2500000",
-			"!",
-			"whipclientsink",
-			`signaller::whip-endpoint=http://localhost:${serverPort}/api/webrtc/whip?sessionId=${this.sessionId}&token=${token}`,
-			`signaller::auth-token=Bearer_${token}`,
-		]
-
-		const gst = resolveGstPaths()
-		const spawnedEnv = { ...process.env, ...gst.env }
-		delete spawnedEnv.DISPLAY
-		delete spawnedEnv.XAUTHORITY
-
-		const proc = spawn(gst.gstLaunch, pipelineArgs, { env: spawnedEnv })
-		this.process = proc
-		this.intentionalStop = false
-
-		proc.on("error", (err) => {
-			logger.error(`GStreamer fallback spawn failed: ${err.message}`)
+	public async stop(): Promise<void> {
+		if (this.process) {
+			logger.info("Terminating GStreamer video pipeline")
+			const proc = this.process
+			this.stopping = true
+			await new Promise<void>((resolve) => {
+				const killTimer = setTimeout(() => {
+					if (proc.exitCode === null) {
+						logger.warn(
+							"GStreamer process did not exit on SIGTERM, sending SIGKILL",
+						)
+						proc.kill("SIGKILL")
+					}
+				}, 2000)
+				proc.once("close", () => {
+					clearTimeout(killTimer)
+					resolve()
+				})
+				proc.kill("SIGTERM")
+			})
 			this.process = null
-			this.emit("capture-failure", err)
-		})
-
-		proc.stderr?.on("data", (data: Buffer) => {
-			logger.warn(
-				`GStreamer fallback [${this.sessionId}]: ${data.toString().trim()}`,
-			)
-		})
-
-		proc.on("close", (code) => {
-			logger.info(`GStreamer fallback exited with status: ${code}`)
-			this.process = null
-			this.emit("exit")
-		})
-	}
-
-	public stop(): void {
-		if (!this.process) return
-		logger.info("Terminating GStreamer video pipeline")
-		this.process.kill("SIGTERM")
-		this.process = null
+			this.stopping = false
+		}
+		await this.cleanup()
 	}
 
 	private async cleanup(): Promise<void> {
