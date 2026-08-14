@@ -3,6 +3,7 @@ import QRCode from "qrcode"
 import { useEffect, useState, useRef } from "react"
 import { APP_CONFIG, THEMES } from "../config"
 import serverConfig from "../server-config.json"
+import pkg from "../../package.json"
 import { t } from "../utils/i18n"
 export const Route = createFileRoute("/settings")({
 	component: SettingsPage,
@@ -128,7 +129,11 @@ function SettingsPage() {
 	// Auto-generate token on settings page load (localhost only)
 	useEffect(() => {
 		if (typeof window === "undefined") return
-		if (window.location.hostname !== "localhost") return
+		const isLocal =
+			window.location.hostname === "localhost" ||
+			window.location.hostname === "127.0.0.1" ||
+			window.location.hostname === "::1"
+		if (!isLocal) return
 
 		let isMounted = true
 
@@ -163,10 +168,14 @@ function SettingsPage() {
 			.catch((e) => console.error("QR Error:", e))
 	}, [ip, shareUrl])
 
-	// Effect: Auto-detect LAN IP from Server (only if on localhost)
+	// Effect: Auto-detect LAN IP from Server (only if on loopback/localhost)
 	useEffect(() => {
 		if (typeof window === "undefined") return
-		if (window.location.hostname !== "localhost") return
+		const isLocal =
+			window.location.hostname === "localhost" ||
+			window.location.hostname === "127.0.0.1" ||
+			window.location.hostname === "::1"
+		if (!isLocal) return
 
 		fetch("/api/host/ip")
 			.then((res) => res.json())
@@ -385,18 +394,11 @@ function SettingsPage() {
 								)}
 
 								<div className="flex flex-col gap-2 mt-2 w-full px-4 items-center">
-									<a
-										className="link link-primary break-all text-lg font-mono bg-base-100 px-4 py-2 rounded-lg inline-block max-w-full overflow-hidden text-ellipsis"
-										href={shareUrl}
-									>
-										{shareUrl.replace(`${protocol}//`, "")}
-									</a>
 									<button
 										type="button"
-										className="btn btn-sm btn-outline w-full max-w-xs"
+										className="border-0 link-primary link text-lg font-mono bg-base-100 px-4 py-2 rounded-lg inline-block max-w-full overflow-hidden text-ellipsis"
 										onClick={async () => {
 											setCopyError("")
-
 											try {
 												if (
 													window.isSecureContext &&
@@ -425,10 +427,11 @@ function SettingsPage() {
 											}
 										}}
 									>
-										{copied
-											? t("settings", "copied")
-											: t("settings", "copyLink")}
+										{shareUrl.replace(`${protocol}//`, "")}
 									</button>
+									<p className={`${copied ? "visible" : "invisible"}`}>
+										{t("settings", "copied")}
+									</p>
 									{copyError && (
 										<p className="text-error text-xs text-center max-w-xs">
 											{copyError}
@@ -439,7 +442,7 @@ function SettingsPage() {
 						</div>
 
 						<div className="text-xs text-center opacity-50 pt-8 pb-8">
-							Rein Remote v1.0.0
+							Rein Remote v{pkg.version}
 						</div>
 					</div>
 				</div>

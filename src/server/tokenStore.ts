@@ -1,8 +1,9 @@
+import os from "node:os"
+
 import crypto from "node:crypto"
 import fs from "node:fs"
-import { writeFile } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 
 interface TokenEntry {
 	token: string
@@ -10,9 +11,24 @@ interface TokenEntry {
 	lastUsed: number
 }
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const TOKENS_FILE = path.resolve(__dirname, "../tokens.json")
+function resolveDataDir(): string {
+	if (process.env.REIN_DATA_DIR) return process.env.REIN_DATA_DIR
+	const platform = os.platform()
+	if (platform === "win32") {
+		return path.join(process.env.APPDATA ?? os.homedir(), "Rein")
+	}
+	if (platform === "darwin") {
+		return path.join(os.homedir(), "Library", "Application Support", "Rein")
+	}
+	// Linux / other
+	return path.join(
+		process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share"),
+		"Rein",
+	)
+}
+
+const DATA_DIR = resolveDataDir()
+const TOKENS_FILE = path.join(DATA_DIR, "tokens.json")
 const EXPIRY_MS = 10 * 24 * 60 * 60 * 1000 // 10 days
 
 let tokens: TokenEntry[] = []
@@ -48,6 +64,7 @@ async function save(force = false): Promise<void> {
 
 	isSaving = true
 	try {
+		await mkdir(DATA_DIR, { recursive: true })
 		await writeFile(TOKENS_FILE, JSON.stringify(tokens, null, 2), {
 			encoding: "utf-8",
 			mode: 0o600, // Restricted to owner only
@@ -115,6 +132,16 @@ export function getActiveToken(): string | null {
 	// Return the one used most recently
 	const sorted = [...tokens].sort((a, b) => b.lastUsed - a.lastUsed)
 	return sorted[0].token
+}
+
+/** Returns the active token, creating and storing a new one if none exists. */
+export function getOrCreateActiveToken(): string {
+	let token = getActiveToken()
+	if (!token) {
+		token = generateToken()
+		storeToken(token)
+	}
+	return token
 }
 
 /** Check if any tokens exist yet (first-run detection). */

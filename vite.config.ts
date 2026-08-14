@@ -32,7 +32,12 @@ const config = defineConfig({
 			configurePreviewServer: wireServer,
 		},
 		devtools(),
-		nitro(),
+		nitro({
+			plugins: ["./src/server/nitro-plugin"],
+			rollupConfig: {
+				external: ["koffi", "x11"],
+			},
+		}),
 		tanstackStart(),
 		react({
 			babel: {
@@ -41,7 +46,6 @@ const config = defineConfig({
 		}),
 	],
 	ssr: {
-		external: ["dbus-next", "eventsource", "werift"],
 		noExternal: ["tailwindcss", "@tailwindcss/postcss"],
 	},
 	server: {
@@ -49,9 +53,7 @@ const config = defineConfig({
 		port: serverConfig.frontendPort,
 	},
 	build: {
-		rollupOptions: {
-			external: ["werift"],
-		},
+		rollupOptions: {},
 	},
 })
 

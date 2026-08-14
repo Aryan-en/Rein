@@ -3,7 +3,6 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 import winston from "winston"
 
 // dynamic log path (similar to logPath() requirement)
@@ -20,20 +19,11 @@ try {
 	)
 }
 
+import { loadServerConfig } from "./configHelper"
+
 // Read verboseLogs flag from server-config.json (defaults to false if missing/unreadable)
-let verboseLogs = false
-try {
-	const configPath = fileURLToPath(
-		new URL("../server-config.json", import.meta.url),
-	)
-	const raw = fs.readFileSync(configPath, "utf-8")
-	const cfg = JSON.parse(raw) as { verboseLogs?: boolean }
-	verboseLogs = cfg.verboseLogs === true
-} catch (err: unknown) {
-	process.stderr.write(
-		`[logger] Server config read notice: ${err instanceof Error ? err.message : String(err)}\n`,
-	)
-}
+const serverConfig = loadServerConfig()
+const verboseLogs = serverConfig.verboseLogs === true
 
 // Ensure the logger handles uncaught exceptions and rejections
 const logger = winston.createLogger({
