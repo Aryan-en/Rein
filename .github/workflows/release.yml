@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - master
-      - "Packaging&Workflow"
+      - BetaVersion
   workflow_dispatch:
 
 jobs:
