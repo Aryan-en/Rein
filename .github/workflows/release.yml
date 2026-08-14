@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "Packaging&Workflow"
+  workflow_dispatch:
+
+jobs:
+  # ── Check whether package.json version changed ──────────────────────────────
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      tag: ${{ steps.get_version.outputs.tag }}
+      should_release: ${{ steps.check.outputs.should_release }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get current version
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if version changed vs previous commit
+        id: check
+        run: |
+          PREV=$(git show HEAD~1:package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version" 2>/dev/null || echo "none")
+          CURR=$(node -p "require('./package.json').version")
+          echo "Previous: $PREV  Current: $CURR"
+          if [ "$PREV" != "$CURR" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Build: Windows ───────────────────────────────────────────────────────────
+  build-windows:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Clean cache
+        run: |
+          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+          npm cache clean --force
+        shell: pwsh
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Rebuild native dependencies
+        run: npx electron-builder install-app-deps
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Package Electron app
+        run: npm run dist -- --publish=never
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/*.exe
+          retention-days: 1
+
+  # ── Build: Linux ─────────────────────────────────────────────────────────────
+  build-linux:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libgtk-3-dev libnotify-dev libgconf-2-4 libnss3 libxss1 libasound2
+
+      - name: Install dependencies
+        run: npm install --include=optional --force
+
+      - name: Rebuild native dependencies
+        run: npx electron-builder install-app-deps
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Package Electron app
+        run: npm run dist -- --publish=never
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: dist/*.AppImage
+          retention-days: 1
+
+  # ── Build: macOS ─────────────────────────────────────────────────────────────
+  build-macos:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --force
+
+      - name: Rebuild native dependencies
+        run: npx electron-builder install-app-deps
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Package Electron app (unsigned)
+        env:
+          # Skip Apple code signing – certs not configured
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist -- --publish=never
+        # macOS notarization requires APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD secrets.
+        # If not present the step above produces an unsigned .dmg which is fine for now.
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/*.dmg
+          retention-days: 1
+
+  # ── Create GitHub Release ─────────────────────────────────────────────────────
+  release:
+    needs: [check-version, build-windows, build-linux, build-macos]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    # Allow one job at a time to avoid duplicate releases
+    concurrency:
+      group: release-${{ needs.check-version.outputs.tag }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+          path: artifacts/windows
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+          path: artifacts/linux
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos
+          path: artifacts/macos
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-version.outputs.tag }}
+          name: Rein ${{ needs.check-version.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/windows/*.exe
+            artifacts/linux/*.AppImage
+            artifacts/macos/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
