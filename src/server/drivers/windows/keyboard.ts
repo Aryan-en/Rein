@@ -5,10 +5,10 @@
  * SendInput API. Supports both virtual-key based input and Unicode
  * character injection for reliable text entry across applications.
  */
-import { SendInput, INPUT_STRUCT_SIZE } from "./structs"
-import { KEYEVENTF_KEYUP, KEYEVENTF_UNICODE } from "./constants"
-import { INPUT_KEYBOARD } from "../../constants"
-import { VK_MAP } from "../keyMap"
+import { SendInput, INPUT_STRUCT_SIZE } from "./structs.ts"
+import { KEYEVENTF_KEYUP, KEYEVENTF_UNICODE } from "./constants.ts"
+import { INPUT_KEYBOARD } from "../../constants.ts"
+import { VK_MAP } from "../keyMap.ts"
 
 export class WindowsKeyboard {
 	injectKey(key: string, pos: string = ""): void {

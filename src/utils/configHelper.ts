@@ -15,6 +15,7 @@ export interface ServerConfig {
 	disableBundledGstreamer?: boolean
 	version?: string
 }
+let cachedConfig: ServerConfig | null = null
 
 /**
  * Finds the absolute path to server-config.json across dev, production, and Electron environments.
@@ -68,12 +69,18 @@ export function getServerConfigPath(): string | null {
  * Safely reads and parses server-config.json. Returns empty object if missing/unreadable.
  */
 export function loadServerConfig(): ServerConfig {
+	if (cachedConfig) return cachedConfig
 	const configPath = getServerConfigPath()
-	if (!configPath) return {}
+	if (!configPath) {
+		cachedConfig = {}
+		return cachedConfig
+	}
 	try {
 		const raw = fs.readFileSync(configPath, "utf-8")
-		return JSON.parse(raw) as ServerConfig
+		cachedConfig = JSON.parse(raw) as ServerConfig
 	} catch {
+		cachedConfig = {}
 		return {}
 	}
+	return cachedConfig
 }

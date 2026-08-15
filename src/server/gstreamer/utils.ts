@@ -5,8 +5,8 @@
  * to request a PipeWire video stream node from the Wayland compositor.
  */
 
-import logger from "../../utils/logger"
-import { generateToken } from "../tokenStore"
+import logger from "../../utils/logger.ts"
+import { generateToken } from "../tokenStore.ts"
 import type * as DBus from "dbus-next"
 import type { Message } from "dbus-next"
 

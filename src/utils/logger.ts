@@ -19,7 +19,7 @@ try {
 	)
 }
 
-import { loadServerConfig } from "./configHelper"
+import { loadServerConfig } from "./configHelper.ts"
 
 // Read verboseLogs flag from server-config.json (defaults to false if missing/unreadable)
 const serverConfig = loadServerConfig()

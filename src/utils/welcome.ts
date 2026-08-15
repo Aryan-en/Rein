@@ -1,8 +1,8 @@
 import QRCode from "qrcode"
-import { getOrCreateActiveToken } from "../server/tokenStore"
-import { i18n } from "./i18n"
-import { getLanIp } from "./net"
-import { loadServerConfig } from "./configHelper"
+import { getOrCreateActiveToken } from "../server/tokenStore.ts"
+import { i18n } from "./i18n.ts"
+import { getLanIp } from "./net.ts"
+import { loadServerConfig } from "./configHelper.ts"
 
 const str = i18n.en.server
 

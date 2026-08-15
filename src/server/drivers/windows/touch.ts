@@ -7,7 +7,7 @@
  * frame generation for native touch input emulation.
  */
 import koffi from "koffi"
-import { CreateSyntheticPointerDevice, InjectPointerInput } from "./structs"
+import { CreateSyntheticPointerDevice, InjectPointerInput } from "./structs.ts"
 import {
 	PT_TOUCHPAD,
 	POINTER_FEEDBACK_DEFAULT,
@@ -20,8 +20,8 @@ import {
 	POINTER_FLAG_UP,
 	TOUCH_MASK_CONTACTAREA,
 	MAX_CONTACTS,
-} from "./constants"
-import type { TouchContact } from "../../types"
+} from "./constants.ts"
+import type { TouchContact } from "../../types.ts"
 
 export class WindowsTouch {
 	private hDevice: bigint | null = null

@@ -2,10 +2,13 @@ import { spawn, type ChildProcess } from "node:child_process"
 import os from "node:os"
 import fs from "node:fs"
 import path from "node:path"
-import logger from "../../utils/logger"
-import { type CaptureProvider, createCaptureProvider } from "./captureProvider"
-import { resolveGstPaths } from "./gstPaths"
-import { RTP_HOST, RTP_PORT } from "../constants"
+import logger from "../../utils/logger.ts"
+import {
+	type CaptureProvider,
+	createCaptureProvider,
+} from "./captureProvider.ts"
+import { resolveGstPaths } from "./gstPaths.ts"
+import { RTP_HOST, RTP_PORT } from "../constants.ts"
 
 export class GstManager {
 	private process: ChildProcess | null = null

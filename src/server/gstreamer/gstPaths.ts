@@ -14,7 +14,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import logger from "../../utils/logger"
+import logger from "../../utils/logger.ts"
+import { loadServerConfig } from "../../utils/configHelper.ts"
 
 function resolveProjectRoot(): string {
 	const currentFile = fileURLToPath(import.meta.url)
@@ -47,28 +48,6 @@ export interface GstPaths {
 	isBundled: boolean
 	/** Environment variables to set when running GStreamer. */
 	env: Record<string, string>
-}
-
-export interface ServerConfig {
-	host?: string
-	frontendPort?: number
-	address?: string
-	inputThrottleMs?: number
-	sensitivity?: number
-	invertScroll?: boolean
-	verboseLogs?: boolean
-	useSystemGstreamer?: boolean
-	useGlobalGstreamer?: boolean
-	disableBundledGstreamer?: boolean
-}
-
-import { loadServerConfig as readServerConfig } from "../../utils/configHelper"
-
-/**
- * Loads server configuration from server-config.json if available.
- */
-function loadServerConfig(): ServerConfig {
-	return readServerConfig() as ServerConfig
 }
 
 /**
@@ -113,7 +92,11 @@ function bundledPaths(bundledRoot: string): GstPaths {
 	try {
 		fs.accessSync(bundledRoot, fs.constants.W_OK)
 	} catch {
-		registryPath = path.join(os.tmpdir(), "rein-gstreamer-registry.bin")
+		const userDir =
+			process.env.REIN_DATA_DIR ??
+			path.join(os.tmpdir(), `rein-${process.getuid?.() ?? "user"}`)
+		fs.mkdirSync(userDir, { recursive: true, mode: 0o700 })
+		registryPath = path.join(userDir, "gstreamer-registry.bin")
 	}
 
 	const env: Record<string, string> = {
@@ -168,12 +151,12 @@ export function resolveGstPaths(): GstPaths {
 	const config = loadServerConfig()
 
 	// Check if local bundled GStreamer is disabled via server-config.json
-	const isSystemDisabled =
+	const useSystemDisabled =
 		config.useSystemGstreamer === true ||
 		config.useGlobalGstreamer === true ||
 		config.disableBundledGstreamer === true
 
-	if (isSystemDisabled) {
+	if (useSystemDisabled) {
 		logger.info(
 			"Bundled GStreamer disabled in server-config.json — using system-installed GStreamer",
 		)

@@ -7,7 +7,7 @@
  * mouse, keyboard, touch, clipboard, and gesture interactions.
  */
 import os from "node:os"
-import { applyMotion } from "./drivers/utils"
+import { applyMotion } from "./drivers/utils.ts"
 import {
 	DEFAULT_SCREEN_HEIGHT,
 	DEFAULT_SCREEN_WIDTH,

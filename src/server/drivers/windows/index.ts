@@ -5,7 +5,7 @@
  * handling native mouse events directly while delegating keyboard
  * and touch functionality to platform-specific modules.
  */
-import { SendInput, INPUT_STRUCT_SIZE } from "./structs"
+import { SendInput, INPUT_STRUCT_SIZE } from "./structs.ts"
 import {
 	MOUSEEVENTF_MOVE,
 	MOUSEEVENTF_LEFTDOWN,
@@ -17,11 +17,11 @@ import {
 	MOUSEEVENTF_WHEEL,
 	MOUSEEVENTF_HWHEEL,
 	WHEEL_DELTA,
-} from "./constants"
-import { INPUT_MOUSE, DEFAULT_CONFIG } from "../../constants"
-import type { InputConfig, TouchContact } from "../../types"
-import { WindowsKeyboard } from "./keyboard"
-import { WindowsTouch } from "./touch"
+} from "./constants.ts"
+import { INPUT_MOUSE, DEFAULT_CONFIG } from "../../constants.ts"
+import type { InputConfig, TouchContact } from "../../types.ts"
+import { WindowsKeyboard } from "./keyboard.ts"
+import { WindowsTouch } from "./touch.ts"
 
 if (process.platform !== "win32") {
 	throw new Error("WindowsInputInjector can only be used on Windows")

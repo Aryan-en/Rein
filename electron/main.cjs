@@ -24,11 +24,8 @@ try {
       break;
     }
   }
-} catch (e) {
-  // Non-fatal: use defaults
-}
+} catch (e) {}
 
-// Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -51,8 +48,6 @@ function waitForServer(url, timeoutMs = 30000) {
 
 function startServer() {
   return new Promise((resolve, reject) => {
-    // .output and koffi are unpacked via asarUnpack — real files on disk.
-    // werift, ws, winston are now bundled into index.mjs so no external deps needed.
     const serverPath = path.join(
       process.resourcesPath,
       'app.asar.unpacked',
@@ -60,14 +55,6 @@ function startServer() {
       'server',
       'index.mjs'
     );
-
-    // Log file next to the exe for easy debugging
-    const logPath = path.join(path.dirname(process.execPath), 'rein-server.log');
-    const log = (msg) => {
-      const line = `[${new Date().toISOString()}] ${msg}\n`;
-      process.stdout.write(line);
-      try { fs.appendFileSync(logPath, line); } catch (_) {}
-    };
 
     if (!fs.existsSync(serverPath)) {
       const msg = `Server not found: ${serverPath}`;
@@ -83,8 +70,6 @@ function startServer() {
         ...process.env,
         HOST: serverHost,
         PORT: serverPort.toString(),
-        // Provide a writable user-data directory so tokenStore.ts and other
-        // persistent state can write outside the read-only AppImage mount.
         REIN_DATA_DIR: app.getPath('userData'),
       },
     });
@@ -144,6 +129,9 @@ app.whenReady().then(async () => {
     await startServer();
   } catch (err) {
     process.stdout.write(`[FATAL] Server failed to start: ${err.message}\n`);
+    dialog.showErrorBox('Rein failed to start', err.message);
+    app.quit();
+    return;
   }
   createWindow();
 });

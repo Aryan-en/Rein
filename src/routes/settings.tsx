@@ -442,7 +442,7 @@ function SettingsPage() {
 						</div>
 
 						<div className="text-xs text-center opacity-50 pt-8 pb-8">
-							Rein Remote v{pkg.version}
+							{t("settings", "appVersion", { version: pkg.version })}
 						</div>
 					</div>
 				</div>

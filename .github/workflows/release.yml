@@ -7,6 +7,9 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
@@ -17,9 +20,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Get current version
         id: get_version
@@ -28,15 +29,23 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Check if version changed vs previous commit
+      - name: Check if GitHub release already exists for this version
         id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV=$(git show HEAD~1:package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version" 2>/dev/null || echo "none")
-          CURR=$(node -p "require('./package.json').version")
-          echo "Previous: $PREV  Current: $CURR"
-          if [ "$PREV" != "$CURR" ]; then
+          TAG="v$(node -p "require('./package.json').version")"
+          echo "Checking for existing release with tag: $TAG"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG")
+          echo "GitHub API response status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "404" ]; then
+            echo "No existing release found — will create one."
             echo "should_release=true" >> $GITHUB_OUTPUT
           else
+            echo "Release $TAG already exists (HTTP $HTTP_STATUS) — skipping."
             echo "should_release=false" >> $GITHUB_OUTPUT
           fi
 
@@ -48,10 +57,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -75,7 +84,7 @@ jobs:
         run: npm run dist -- --publish=never
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-windows
           path: dist/*.exe
@@ -89,10 +98,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -103,7 +112,7 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libnotify-dev libnss3 libxss1 libasound2-dev libx11-dev libxrandr-dev || true
 
       - name: Install dependencies
-        run: npm install --include=optional --force
+        run: npm ci --include=optional
 
       - name: Rebuild native dependencies
         run: npx electron-builder install-app-deps
@@ -115,13 +124,13 @@ jobs:
         run: npm run dist -- --publish=never
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-linux
           path: dist/*.AppImage
           retention-days: 1
 
-  # ── Build: macOS ─────────────────────────────────────────────────────────────
+  #Build: macOS
   build-macos:
     needs: check-version
     if: needs.check-version.outputs.should_release == 'true'
@@ -129,16 +138,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
-        run: npm install --include=optional --force
+        run: npm ci --include=optional
 
       - name: Rebuild native dependencies
         run: npx electron-builder install-app-deps
@@ -148,50 +157,48 @@ jobs:
 
       - name: Package Electron app (unsigned)
         env:
-          # Skip Apple code signing – certs not configured
+          # Skip Apple code signing
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run dist -- --publish=never
-        # macOS notarization requires APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD secrets.
-        # If not present the step above produces an unsigned .dmg which is fine for now.
-
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-macos
           path: dist/*.dmg
           retention-days: 1
 
-  # ── Create GitHub Release ─────────────────────────────────────────────────────
+  #  Create GitHub Release
   release:
-    needs: [check-version, build-windows, build-linux] #, build-macos]
+    needs: [check-version, build-windows, build-linux, build-macos]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
-    # Allow one job at a time to avoid duplicate releases
+    permissions:
+      contents: write
     concurrency:
       group: release-${{ needs.check-version.outputs.tag }}
       cancel-in-progress: false
 
     steps:
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-windows
           path: artifacts/windows
 
       - name: Download Linux artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-linux
           path: artifacts/linux
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-macos
           path: artifacts/macos
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           tag_name: ${{ needs.check-version.outputs.tag }}
           name: Rein ${{ needs.check-version.outputs.tag }}

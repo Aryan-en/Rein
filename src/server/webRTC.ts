@@ -7,12 +7,12 @@ import {
 import { WebSocketServer, WebSocket } from "ws"
 import dgram from "node:dgram"
 import crypto from "node:crypto"
-import { InputHandler } from "./InputHandler"
-import logger from "../utils/logger"
-import type { InputMessage, InputConfig } from "./types"
-import { isKnownToken } from "./tokenStore"
-import { ICE_PORT_MAX, ICE_PORT_MIN, RTP_HOST, RTP_PORT } from "./constants"
-import { loadServerConfig } from "../utils/configHelper"
+import { InputHandler } from "./InputHandler.ts"
+import logger from "../utils/logger.ts"
+import type { InputMessage, InputConfig } from "./types.ts"
+import { isKnownToken } from "./tokenStore.ts"
+import { ICE_PORT_MAX, ICE_PORT_MIN, RTP_HOST, RTP_PORT } from "./constants.ts"
+import { loadServerConfig } from "../utils/configHelper.ts"
 
 interface ClientSession {
 	ws: WebSocket

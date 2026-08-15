@@ -1,12 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { Transform } from "node:stream"
-import logger from "../utils/logger"
+import logger from "../utils/logger.ts"
 import winston from "winston"
-import { getOrCreateActiveToken, isKnownToken } from "./tokenStore"
-import { GstManager } from "./gstreamer/gstManager"
-import { WebRTCManager } from "./webRTC"
-import type { InputConfig } from "./types"
-import { getLanIp, isLoopbackAddress } from "../utils/net"
+import { getOrCreateActiveToken, isKnownToken } from "./tokenStore.ts"
+import { GstManager } from "./gstreamer/gstManager.ts"
+import { WebRTCManager } from "./webRTC.ts"
+import type { InputConfig } from "./types.ts"
+import { getLanIp, isLoopbackAddress } from "../utils/net.ts"
 
 let gstManager: GstManager | null = null
 let webrtcManager: WebRTCManager | null = null
@@ -121,8 +121,11 @@ function getEffectiveHostStatus():
 
 // biome-ignore lint/suspicious/noExplicitAny: Vite server instance
 export function attachSignalingRoutes(server: any): void {
+	if (signalingAttached) {
+		logger.warn("Signaling routes already attached,skipping")
+		return
+	}
 	const httpServer = server.httpServer || server
-	if (signalingAttached) return
 	signalingAttached = true
 
 	if (!webrtcManager && httpServer) {
