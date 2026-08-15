@@ -50,7 +50,6 @@
 		"@tanstack/react-router-devtools": "^1.132.0",
 		"@testing-library/dom": "^10.4.0",
 		"@testing-library/react": "^16.2.0",
-		"@types/default-gateway": "^7.2.2",
 		"@types/node": "^22.10.2",
 		"@types/qrcode": "^1.5.5",
 		"@types/react": "^19.2.0",
@@ -102,14 +101,16 @@
 		],
 		"npmRebuild": false,
 		"linux": {
-			"target": "AppImage"
+			"target": "AppImage",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		},
 		"win": {
 			"target": "nsis",
 			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		},
 		"mac": {
-			"target": "dmg"
+			"target": "dmg",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		}
 	},
 	"allowScripts": {

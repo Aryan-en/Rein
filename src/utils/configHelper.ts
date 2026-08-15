@@ -77,10 +77,13 @@ export function loadServerConfig(): ServerConfig {
 	}
 	try {
 		const raw = fs.readFileSync(configPath, "utf-8")
-		cachedConfig = JSON.parse(raw) as ServerConfig
+		const parsed: unknown = JSON.parse(raw)
+		cachedConfig =
+			parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+				? (parsed as ServerConfig)
+				: {}
 	} catch {
 		cachedConfig = {}
-		return {}
 	}
 	return cachedConfig
 }

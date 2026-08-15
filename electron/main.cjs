@@ -1,4 +1,4 @@
-const { app, BrowserWindow, utilityProcess } = require('electron');
+const { app, BrowserWindow, utilityProcess, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -8,6 +8,13 @@ let serverProcess;
 let serverHost = '0.0.0.0';
 let serverPort = 3000;
 
+  // Log file
+  const logPath = path.join(path.dirname(process.execPath), 'rein-server.log');
+  const log = (msg) => {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    process.stdout.write(line);
+    try { fs.appendFileSync(logPath, line); } catch (_) {}
+  };
 // Load server config (port/host overrides)
 try {
   const candidates = [
@@ -32,15 +39,27 @@ if (!gotLock) {
   process.exit(0);
 }
 
-// Poll until server responds (or timeout)
-function waitForServer(url, timeoutMs = 30000) {
+function waitForServer(url, timeoutMs = 30000, requestTimeoutMs = 3000) {
   return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
+    let settled = false;
+    const settle = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadlineTimer);
+      fn(val);
+    };
+
+    const deadlineTimer = setTimeout(() => {
+      settle(reject, new Error(`Server did not respond within ${timeoutMs}ms`));
+    }, timeoutMs);
+
     const check = () => {
-      if (Date.now() > deadline) {
-        return reject(new Error(`Server did not respond within ${timeoutMs}ms`));
-      }
-      http.get(url, () => resolve()).on('error', () => setTimeout(check, 500));
+      if (settled) return;
+      const req = http.get(url, () => settle(resolve));
+      req.setTimeout(requestTimeoutMs, () => req.destroy());
+      req.on('error', () => {
+        if (!settled) setTimeout(check, 500);
+      });
     };
     check();
   });
@@ -84,6 +103,10 @@ function startServer() {
     if (serverProcess.stdout) serverProcess.stdout.on('data', d => append(d.toString()));
     if (serverProcess.stderr) serverProcess.stderr.on('data', d => append(d.toString()));
 
+    // Track whether waitForServer has already signalled readiness so the exit
+    // handler can distinguish a post-ready crash from a pre-ready crash.
+    let ready = false;
+
     serverProcess.on('exit', (code) => {
       log(`Server exited with code ${code}`);
       try {
@@ -92,9 +115,16 @@ function startServer() {
           `Exit code: ${code}\n\n${serverLog}`
         );
       } catch (_) {}
+      // Reject startServer if the process died before becoming ready, giving
+      // the caller the real exit code rather than a generic timeout message.
+      if (!ready) {
+        reject(new Error(`Server process exited with code ${code} before becoming ready`));
+      }
     });
 
-    waitForServer(`http://localhost:${serverPort}`, 30000).then(resolve).catch(reject);
+    waitForServer(`http://localhost:${serverPort}`, 30000)
+      .then(() => { ready = true; resolve(); })
+      .catch(reject);
   });
 }
 

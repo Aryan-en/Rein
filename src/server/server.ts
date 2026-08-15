@@ -126,209 +126,213 @@ export function attachSignalingRoutes(server: any): void {
 		return
 	}
 	const httpServer = server.httpServer || server
-	signalingAttached = true
 
-	if (!webrtcManager && httpServer) {
-		webrtcManager = new WebRTCManager(httpServer)
-	}
-
-	if (!gstManager) {
-		gstManager = new GstManager()
-		hostStatus = "starting"
-		gstManager
-			.start()
-			.then(() => {
-				hostStatus = "running"
-				logger.info("GStreamer capture engine started")
-			})
-			.catch((err) => {
-				logger.error(`Failed to start GStreamer capture engine: ${err}`)
-				hostStatus = "error"
-			})
-	}
-
-	const handleApiRequest = (
-		req: IncomingMessage,
-		res: ServerResponse,
-		next?: () => void,
-	) => {
-		const pathname = new URL(
-			req.url ?? "",
-			`http://${req.headers.host ?? "localhost"}`,
-		).pathname
-
-		if (!pathname.startsWith("/api/")) {
-			if (next) next()
-			return
+	try {
+		if (!webrtcManager && httpServer) {
+			webrtcManager = new WebRTCManager(httpServer)
 		}
 
-		if (pathname === "/api/host/start" && req.method === "POST") {
-			if (!requireAuth(req, res)) return
-			if (hostStatus === "running") {
-				json(res, 200, { status: getEffectiveHostStatus() })
-				return
-			}
+		if (!gstManager) {
+			gstManager = new GstManager()
 			hostStatus = "starting"
-			if (!gstManager) gstManager = new GstManager()
 			gstManager
 				.start()
 				.then(() => {
 					hostStatus = "running"
+					logger.info("GStreamer capture engine started")
 				})
 				.catch((err) => {
-					logger.error(`Failed to start GStreamer: ${err}`)
+					logger.error(`Failed to start GStreamer capture engine: ${err}`)
 					hostStatus = "error"
 				})
-
-			json(res, 200, { status: getEffectiveHostStatus() })
-			return
 		}
 
-		if (pathname === "/api/host/stop" && req.method === "POST") {
-			if (!requireAuth(req, res)) return
-			hostStatus = "stopped"
-			if (gstManager) {
-				gstManager
-					.stop()
-					.then(() => {
-						json(res, 200, { status: hostStatus })
-					})
-					.catch((err) => {
-						logger.error(`Error stopping GStreamer: ${err}`)
-						json(res, 500, { error: "Failed to stop host engine" })
-					})
-			} else {
-				json(res, 200, { status: hostStatus })
-			}
-			return
-		}
+		const handleApiRequest = (
+			req: IncomingMessage,
+			res: ServerResponse,
+			next?: () => void,
+		) => {
+			const pathname = new URL(
+				req.url ?? "",
+				`http://${req.headers.host ?? "localhost"}`,
+			).pathname
 
-		if (pathname === "/api/host/status" && req.method === "GET") {
-			if (!requireAuth(req, res)) return
-			json(res, 200, { status: getEffectiveHostStatus() })
-			return
-		}
-
-		if (pathname === "/api/host/ip" && req.method === "GET") {
-			if (!requireAuth(req, res)) return
-			json(res, 200, { ip: getLanIp() })
-			return
-		}
-
-		if (pathname === "/api/auth/token" && req.method === "POST") {
-			const addr = req.socket.remoteAddress
-			const isLocal = isLoopbackAddress(addr)
-			if (!isLocal) {
-				json(res, 403, { error: "Localhost only" })
+			if (!pathname.startsWith("/api/")) {
+				if (next) next()
 				return
 			}
-			const token = getOrCreateActiveToken()
-			json(res, 200, { token })
-			return
-		}
 
-		if (pathname === "/api/config" && req.method === "POST") {
-			if (!requireAuth(req, res)) return
-			parseJsonBody<Partial<InputConfig>>(req)
-				.then((config) => {
-					if (webrtcManager) {
-						webrtcManager.updateConfig(config)
-					}
-					json(res, 200, { ok: true })
-				})
-				.catch((err) => {
-					json(res, 400, { ok: false, error: String(err) })
-				})
-			return
-		}
-
-		if (pathname === "/api/debug/sessions" && req.method === "GET") {
-			if (!requireAuth(req, res)) return
-			const sessions = webrtcManager?.getSessions() ?? []
-			const inputConnectionCount = sessions.filter(
-				(s) => s.hasInputConnection,
-			).length
-			json(res, 200, {
-				hostStatus: getEffectiveHostStatus(),
-				sessionCount: sessions.length,
-				sessions,
-				inputConnectionCount,
-				latencyMs: lastReportedLatencyMs,
-			})
-			return
-		}
-
-		if (pathname === "/api/debug/report-latency" && req.method === "POST") {
-			if (!requireAuth(req, res)) return
-			parseJsonBody<{ latencyMs?: number }>(req)
-				.then((body) => {
-					if (typeof body.latencyMs === "number" && body.latencyMs >= 0) {
-						lastReportedLatencyMs = body.latencyMs
-					}
-					json(res, 200, { ok: true })
-				})
-				.catch(() => json(res, 400, { ok: false }))
-			return
-		}
-
-		if (pathname === "/api/debug/logs" && req.method === "GET") {
-			if (!requireAuth(req, res)) return
-			res.writeHead(200, {
-				"Content-Type": "text/event-stream",
-				"Cache-Control": "no-cache",
-				Connection: "keep-alive",
-				"X-Accel-Buffering": "no",
-			})
-			res.write(": connected\n\n")
-			// Replay buffered logs so the client sees history from before opening /debug
-			for (const entry of logBuffer) {
-				try {
-					res.write(entry)
-				} catch {
-					/* client gone already */
+			if (pathname === "/api/host/start" && req.method === "POST") {
+				if (!requireAuth(req, res)) return
+				if (hostStatus === "running") {
+					json(res, 200, { status: getEffectiveHostStatus() })
+					return
 				}
+				hostStatus = "starting"
+				if (!gstManager) gstManager = new GstManager()
+				gstManager
+					.start()
+					.then(() => {
+						hostStatus = "running"
+					})
+					.catch((err) => {
+						logger.error(`Failed to start GStreamer: ${err}`)
+						hostStatus = "error"
+					})
+
+				json(res, 200, { status: getEffectiveHostStatus() })
+				return
 			}
-			sseClients.add(res)
-			const keepAliveTimer = setInterval(() => {
-				try {
-					res.write(": keep-alive\n\n")
-				} catch {
+
+			if (pathname === "/api/host/stop" && req.method === "POST") {
+				if (!requireAuth(req, res)) return
+				hostStatus = "stopped"
+				if (gstManager) {
+					gstManager
+						.stop()
+						.then(() => {
+							json(res, 200, { status: hostStatus })
+						})
+						.catch((err) => {
+							logger.error(`Error stopping GStreamer: ${err}`)
+							json(res, 500, { error: "Failed to stop host engine" })
+						})
+				} else {
+					json(res, 200, { status: hostStatus })
+				}
+				return
+			}
+
+			if (pathname === "/api/host/status" && req.method === "GET") {
+				if (!requireAuth(req, res)) return
+				json(res, 200, { status: getEffectiveHostStatus() })
+				return
+			}
+
+			if (pathname === "/api/host/ip" && req.method === "GET") {
+				if (!requireAuth(req, res)) return
+				json(res, 200, { ip: getLanIp() })
+				return
+			}
+
+			if (pathname === "/api/auth/token" && req.method === "POST") {
+				const addr = req.socket.remoteAddress
+				const isLocal = isLoopbackAddress(addr)
+				if (!isLocal) {
+					json(res, 403, { error: "Localhost only" })
+					return
+				}
+				const token = getOrCreateActiveToken()
+				json(res, 200, { token })
+				return
+			}
+
+			if (pathname === "/api/config" && req.method === "POST") {
+				if (!requireAuth(req, res)) return
+				parseJsonBody<Partial<InputConfig>>(req)
+					.then((config) => {
+						if (webrtcManager) {
+							webrtcManager.updateConfig(config)
+						}
+						json(res, 200, { ok: true })
+					})
+					.catch((err) => {
+						json(res, 400, { ok: false, error: String(err) })
+					})
+				return
+			}
+
+			if (pathname === "/api/debug/sessions" && req.method === "GET") {
+				if (!requireAuth(req, res)) return
+				const sessions = webrtcManager?.getSessions() ?? []
+				const inputConnectionCount = sessions.filter(
+					(s) => s.hasInputConnection,
+				).length
+				json(res, 200, {
+					hostStatus: getEffectiveHostStatus(),
+					sessionCount: sessions.length,
+					sessions,
+					inputConnectionCount,
+					latencyMs: lastReportedLatencyMs,
+				})
+				return
+			}
+
+			if (pathname === "/api/debug/report-latency" && req.method === "POST") {
+				if (!requireAuth(req, res)) return
+				parseJsonBody<{ latencyMs?: number }>(req)
+					.then((body) => {
+						if (typeof body.latencyMs === "number" && body.latencyMs >= 0) {
+							lastReportedLatencyMs = body.latencyMs
+						}
+						json(res, 200, { ok: true })
+					})
+					.catch(() => json(res, 400, { ok: false }))
+				return
+			}
+
+			if (pathname === "/api/debug/logs" && req.method === "GET") {
+				if (!requireAuth(req, res)) return
+				res.writeHead(200, {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-cache",
+					Connection: "keep-alive",
+					"X-Accel-Buffering": "no",
+				})
+				res.write(": connected\n\n")
+				// Replay buffered logs so the client sees history from before opening /debug
+				for (const entry of logBuffer) {
+					try {
+						res.write(entry)
+					} catch {
+						/* client gone already */
+					}
+				}
+				sseClients.add(res)
+				const keepAliveTimer = setInterval(() => {
+					try {
+						res.write(": keep-alive\n\n")
+					} catch {
+						sseClients.delete(res)
+						clearInterval(keepAliveTimer)
+					}
+				}, 15000)
+
+				const cleanupSse = () => {
 					sseClients.delete(res)
 					clearInterval(keepAliveTimer)
 				}
-			}, 15000)
-
-			const cleanupSse = () => {
-				sseClients.delete(res)
-				clearInterval(keepAliveTimer)
+				req.on("close", cleanupSse)
+				req.on("error", cleanupSse)
+				return
 			}
-			req.on("close", cleanupSse)
-			req.on("error", cleanupSse)
-			return
+
+			json(res, 404, { error: "API endpoint not found" })
 		}
 
-		json(res, 404, { error: "API endpoint not found" })
-	}
-
-	if (server.middlewares) {
-		server.middlewares.use(handleApiRequest)
-	} else if (httpServer && typeof httpServer.on === "function") {
-		const existingListeners = httpServer.listeners("request") as ((
-			req: IncomingMessage,
-			res: ServerResponse,
-		) => void)[]
-		httpServer.removeAllListeners("request")
-		httpServer.on("request", (req: IncomingMessage, res: ServerResponse) => {
-			const next = () => {
-				for (const listener of existingListeners) {
-					listener.call(httpServer, req, res)
+		if (server.middlewares) {
+			server.middlewares.use(handleApiRequest)
+		} else if (httpServer && typeof httpServer.on === "function") {
+			const existingListeners = httpServer.listeners("request") as ((
+				req: IncomingMessage,
+				res: ServerResponse,
+			) => void)[]
+			httpServer.removeAllListeners("request")
+			httpServer.on("request", (req: IncomingMessage, res: ServerResponse) => {
+				const next = () => {
+					for (const listener of existingListeners) {
+						listener.call(httpServer, req, res)
+					}
 				}
-			}
-			handleApiRequest(req, res, next)
-		})
+				handleApiRequest(req, res, next)
+			})
+		}
+		signalingAttached = true
+		logger.info("Signaling HTTP routes and WebSocket attached")
+	} catch (err) {
+		signalingAttached = false
+		throw err
 	}
-
-	logger.info("Signaling HTTP routes and WebSocket attached")
 }
 
 export async function stopServer() {
