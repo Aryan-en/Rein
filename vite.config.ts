@@ -3,9 +3,9 @@ import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { nitro } from "nitro/vite"
 import { defineConfig } from "vite"
-import serverConfig from "./src/server-config.json"
-import { attachSignalingRoutes } from "./src/server/server"
-import { printWelcome } from "./src/utils/welcome"
+import serverConfig from "./src/server-config.json" with { type: "json" }
+import { attachSignalingRoutes } from "./src/server/server.ts"
+import { printWelcome } from "./src/utils/welcome.ts"
 import react from "@vitejs/plugin-react"
 // biome-ignore lint/suspicious/noExplicitAny: Vite server instance
 const wireServer = (server: any) => {
@@ -32,7 +32,12 @@ const config = defineConfig({
 			configurePreviewServer: wireServer,
 		},
 		devtools(),
-		nitro(),
+		nitro({
+			plugins: ["./src/server/nitro-plugin"],
+			rollupConfig: {
+				external: ["koffi", "x11"],
+			},
+		}),
 		tanstackStart(),
 		react({
 			babel: {
@@ -41,7 +46,6 @@ const config = defineConfig({
 		}),
 	],
 	ssr: {
-		external: ["dbus-next", "eventsource", "werift"],
 		noExternal: ["tailwindcss", "@tailwindcss/postcss"],
 	},
 	server: {
@@ -49,9 +53,7 @@ const config = defineConfig({
 		port: serverConfig.frontendPort,
 	},
 	build: {
-		rollupOptions: {
-			external: ["werift"],
-		},
+		rollupOptions: {},
 	},
 })
 

@@ -1,6 +1,5 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, utilityProcess, dialog } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
@@ -9,39 +8,65 @@ let serverProcess;
 let serverHost = '0.0.0.0';
 let serverPort = 3000;
 
+  // Log file
+  const logPath = path.join(path.dirname(process.execPath), 'rein-server.log');
+  const log = (msg) => {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    process.stdout.write(line);
+    try { fs.appendFileSync(logPath, line); } catch (_) {}
+  };
+// Load server config (port/host overrides)
 try {
-  const configPath = './src/server-config.json';
-  if (fs.existsSync(configPath)) {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (config.host) serverHost = config.host;
-    if (config.frontendPort) serverPort = config.frontendPort;
-  }
-} catch (e) {
-  console.warn('Failed to load server config:', e);
-}
+  const candidates = [
+    process.resourcesPath && path.join(process.resourcesPath, 'src', 'server-config.json'),
+    path.join(__dirname, '..', 'src', 'server-config.json'),
+    path.join(process.cwd(), 'src', 'server-config.json'),
+  ].filter(Boolean);
 
-// Prevent multiple instances
+  for (const configPath of candidates) {
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config.host) serverHost = config.host;
+      if (config.frontendPort) serverPort = config.frontendPort;
+      break;
+    }
+  }
+} catch (e) {}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
   process.exit(0);
 }
 
-// Wait until server is ready
-function waitForServer(url) {
-  return new Promise((resolve) => {
+function waitForServer(url, timeoutMs = 30000, requestTimeoutMs = 3000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadlineTimer);
+      fn(val);
+    };
+
+    const deadlineTimer = setTimeout(() => {
+      settle(reject, new Error(`Server did not respond within ${timeoutMs}ms`));
+    }, timeoutMs);
+
     const check = () => {
-      http
-        .get(url, () => resolve())
-        .on('error', () => setTimeout(check, 500));
+      if (settled) return;
+      const req = http.get(url, () => settle(resolve));
+      req.setTimeout(requestTimeoutMs, () => req.destroy());
+      req.on('error', () => {
+        if (!settled) setTimeout(check, 500);
+      });
     };
     check();
   });
 }
 
-// Start Nitro server (production)
 function startServer() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const serverPath = path.join(
       process.resourcesPath,
       'app.asar.unpacked',
@@ -50,52 +75,97 @@ function startServer() {
       'index.mjs'
     );
 
-    console.log("Starting server from:", serverPath);
+    if (!fs.existsSync(serverPath)) {
+      const msg = `Server not found: ${serverPath}`;
+      log(`[ERROR] ${msg}`);
+      return reject(new Error(msg));
+    }
 
-    serverProcess = spawn('node', [serverPath], {
-      stdio: 'ignore',       // no terminal
-      windowsHide: true,     // hide CMD
+    log(`Starting server: ${serverPath}`);
+
+    serverProcess = utilityProcess.fork(serverPath, [], {
+      stdio: 'pipe',
       env: {
         ...process.env,
         HOST: serverHost,
         PORT: serverPort.toString(),
+        REIN_DATA_DIR: app.getPath('userData'),
       },
     });
 
-    waitForServer(`http://localhost:${serverPort}`).then(resolve);
+    let serverLog = '';
+    const append = (chunk) => {
+      serverLog += chunk;
+      process.stdout.write(chunk);
+      try { fs.appendFileSync(logPath, chunk); } catch (_) {}
+    };
+
+    if (serverProcess.stdout) serverProcess.stdout.on('data', d => append(d.toString()));
+    if (serverProcess.stderr) serverProcess.stderr.on('data', d => append(d.toString()));
+
+    // Track whether waitForServer has already signalled readiness so the exit
+    // handler can distinguish a post-ready crash from a pre-ready crash.
+    let ready = false;
+
+    serverProcess.on('exit', (code) => {
+      log(`Server exited with code ${code}`);
+      try {
+        fs.writeFileSync(
+          path.join(path.dirname(process.execPath), 'server-crash.log'),
+          `Exit code: ${code}\n\n${serverLog}`
+        );
+      } catch (_) {}
+      // Reject startServer if the process died before becoming ready, giving
+      // the caller the real exit code rather than a generic timeout message.
+      if (!ready) {
+        reject(new Error(`Server process exited with code ${code} before becoming ready`));
+      }
+    });
+
+    waitForServer(`http://localhost:${serverPort}`, 30000)
+      .then(() => { ready = true; resolve(); })
+      .catch(reject);
   });
 }
 
-// Create window
 function createWindow() {
   if (mainWindow) return;
+
+  const iconPath = path.join(
+    process.resourcesPath,
+    'app.asar.unpacked',
+    '.output',
+    'public',
+    'app_icon',
+    'Icon512.png'
+  );
 
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    show: false,
+    show: true,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
   });
 
   mainWindow.loadURL(`http://localhost:${serverPort}`);
 
-  // Show when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
-
-  // Debug only if needed
-  mainWindow.webContents.on('did-fail-load', (e, code, desc) => {
-    console.log("LOAD FAILED:", code, desc);
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
+    process.stdout.write(`[LOAD FAILED] ${code} ${desc}\n`);
   });
 }
 
-// App start
 app.whenReady().then(async () => {
-  await startServer();
+  try {
+    await startServer();
+  } catch (err) {
+    process.stdout.write(`[FATAL] Server failed to start: ${err.message}\n`);
+    dialog.showErrorBox('Rein failed to start', err.message);
+    app.quit();
+    return;
+  }
   createWindow();
 });
 
-// Cleanup
 app.on('window-all-closed', () => {
   if (serverProcess) serverProcess.kill();
   if (process.platform !== 'darwin') app.quit();

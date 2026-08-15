@@ -6,8 +6,8 @@
  */
 
 import os from "node:os"
-import logger from "../../utils/logger"
-import { ImplementDbus } from "./utils"
+import logger from "../../utils/logger.ts"
+import { ImplementDbus } from "./utils.ts"
 export interface CaptureProvider {
 	initialize(onFailure?: (err: Error) => void): Promise<void>
 	getGStreamerSource(): Promise<string[]>

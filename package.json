@@ -1,7 +1,9 @@
 {
 	"main": "electron/main.cjs",
-	"name": "app",
-	"version": "1.0.0",
+	"name": "Rein",
+	"version": "0.1.0",
+	"description": "Rein Desktop Streaming Server",
+	"author": "AOSSIE",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -76,33 +78,44 @@
 		"asar": true,
 		"asarUnpack": [
 			".output/**/*",
-			"node_modules/@nut-tree-fork/**/*"
+			"node_modules/koffi/**/*",
+			"node_modules/tslib/**/*"
 		],
 		"extraResources": [
 			{
-				"from": ".output",
-				"to": ".output"
+				"from": "bin",
+				"to": "bin"
+			},
+			{
+				"from": "src/server-config.json",
+				"to": "src/server-config.json"
 			}
 		],
 		"files": [
 			".output/**/*",
 			"electron/**/*",
-			"package.json"
+			"package.json",
+			"node_modules/koffi/**/*",
+			"node_modules/tslib/**/*",
+			"src/server-config.json"
 		],
-		"npmRebuild": true,
+		"npmRebuild": false,
 		"linux": {
-			"target": "AppImage"
+			"target": "AppImage",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		},
 		"win": {
-			"target": "portable"
+			"target": "nsis",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		},
 		"mac": {
-			"target": "dmg"
+			"target": "dmg",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		}
 	},
 	"allowScripts": {
 		"electron-winstaller@5.4.0": true,
-		"esbuild@0.28.1": true,
+		"esbuild@0.28.2": true,
 		"electron@40.10.6": true,
 		"koffi@2.16.3": true
 	}

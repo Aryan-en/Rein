@@ -5,8 +5,8 @@
 export const i18n = {
 	en: {
 		settings: {
-			copyLink: "Copy Link",
-			copied: "Copied!",
+			copied: "Copied to Clipboard!",
+			appVersion: "Rein Remote v{version}",
 			copyFailed:
 				"Could not copy the link automatically. Please copy it manually.",
 		},
@@ -30,7 +30,9 @@ export const i18n = {
 		server: {
 			welcomeTitle: "Welcome to Rein",
 			localLabel: "Local",
+			scanQr: "Scan QR code to connect the client:",
 			networkLabel: "Network",
+			remoteLabel: "Remote",
 			debugLabel: "Debug",
 			settingsLabel: "Settings",
 			readyLine: "Listening for connections",

@@ -7,13 +7,12 @@ import {
 import { WebSocketServer, WebSocket } from "ws"
 import dgram from "node:dgram"
 import crypto from "node:crypto"
-import { InputHandler } from "./InputHandler"
-import logger from "../utils/logger"
-import type { InputMessage, InputConfig } from "./types"
-import fs from "node:fs"
-import { fileURLToPath } from "node:url"
-import { isKnownToken } from "./tokenStore"
-import { ICE_PORT_MAX, ICE_PORT_MIN, RTP_HOST, RTP_PORT } from "./constants"
+import { InputHandler } from "./InputHandler.ts"
+import logger from "../utils/logger.ts"
+import type { InputMessage, InputConfig } from "./types.ts"
+import { isKnownToken } from "./tokenStore.ts"
+import { ICE_PORT_MAX, ICE_PORT_MIN, RTP_HOST, RTP_PORT } from "./constants.ts"
+import { loadServerConfig } from "../utils/configHelper.ts"
 
 interface ClientSession {
 	ws: WebSocket
@@ -185,17 +184,12 @@ export class WebRTCManager {
 
 	private getInitialConfig(): Partial<InputConfig> {
 		try {
-			const configPath = fileURLToPath(
-				new URL("../server-config.json", import.meta.url),
-			)
-			if (fs.existsSync(configPath)) {
-				const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"))
-				return {
-					sensitivity:
-						typeof cfg.sensitivity === "number" ? cfg.sensitivity : 1.0,
-					invertScroll:
-						typeof cfg.invertScroll === "boolean" ? cfg.invertScroll : false,
-				}
+			const cfg = loadServerConfig()
+			return {
+				sensitivity:
+					typeof cfg.sensitivity === "number" ? cfg.sensitivity : 1.0,
+				invertScroll:
+					typeof cfg.invertScroll === "boolean" ? cfg.invertScroll : false,
 			}
 		} catch (e) {
 			logger.warn(

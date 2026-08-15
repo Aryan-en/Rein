@@ -3,15 +3,19 @@
  *
  * Resolves the path to `gst-launch-1.0` and the required environment variables
  * for running a GStreamer pipeline. Prefers the locally bundled GStreamer
- * install at `<project-root>/bin/gstreamer/` and falls back to the
- * system-installed GStreamer.
+ * install at `<project-root>/bin/gstreamer/` (or Electron resources folder in prod)
+ * and falls back to the system-installed GStreamer.
+ *
+ * Can be configured via `src/server-config.json` with `useSystemGstreamer: true`
+ * to force using the global system-installed GStreamer instead of local bundled binaries.
  */
 
 import fs from "node:fs"
-import path from "node:path"
 import os from "node:os"
+import path from "node:path"
 import { fileURLToPath } from "node:url"
-import logger from "../../utils/logger"
+import logger from "../../utils/logger.ts"
+import { loadServerConfig } from "../../utils/configHelper.ts"
 
 function resolveProjectRoot(): string {
 	const currentFile = fileURLToPath(import.meta.url)
@@ -28,7 +32,6 @@ function resolveProjectRoot(): string {
 }
 
 const PROJECT_ROOT = resolveProjectRoot()
-const BUNDLED_GSTREAMER_ROOT = path.join(PROJECT_ROOT, "bin", "gstreamer")
 
 const GST_LAUNCH =
 	os.platform() === "win32" ? "gst-launch-1.0.exe" : "gst-launch-1.0"
@@ -47,20 +50,54 @@ export interface GstPaths {
 	env: Record<string, string>
 }
 
-function hasBundledGstreamer(): boolean {
-	const exe = path.join(BUNDLED_GSTREAMER_ROOT, "bin", GST_LAUNCH)
-	return fs.existsSync(exe)
+/**
+ * Finds the bundled GStreamer root folder in dev or Electron production environments.
+ */
+function getBundledGstreamerRoot(): string | null {
+	const candidates: string[] = []
+
+	// Electron production resources path (electron-builder extraResources)
+	const resourcesPath = (process as unknown as { resourcesPath?: string })
+		.resourcesPath
+	if (resourcesPath) {
+		candidates.push(
+			path.join(resourcesPath, "bin", "gstreamer"),
+			path.join(resourcesPath, "gstreamer"),
+		)
+	}
+
+	// Local development project root
+	candidates.push(path.join(PROJECT_ROOT, "bin", "gstreamer"))
+
+	// Fallback to process.cwd()
+	candidates.push(path.join(process.cwd(), "bin", "gstreamer"))
+
+	for (const candidate of candidates) {
+		const exe = path.join(candidate, "bin", GST_LAUNCH)
+		if (fs.existsSync(exe)) {
+			return candidate
+		}
+	}
+
+	return null
 }
 
-function bundledPaths(): GstPaths {
-	const binDir = path.join(BUNDLED_GSTREAMER_ROOT, "bin")
-	const pluginDir = path.join(BUNDLED_GSTREAMER_ROOT, "lib", "gstreamer-1.0")
-	const pluginScannerDir = path.join(
-		BUNDLED_GSTREAMER_ROOT,
-		"libexec",
-		"gstreamer-1.0",
-	)
-	const registryPath = path.join(BUNDLED_GSTREAMER_ROOT, "registry.bin")
+function bundledPaths(bundledRoot: string): GstPaths {
+	const binDir = path.join(bundledRoot, "bin")
+	const libDir = path.join(bundledRoot, "lib")
+	const pluginDir = path.join(libDir, "gstreamer-1.0")
+	const pluginScannerDir = path.join(bundledRoot, "libexec", "gstreamer-1.0")
+
+	let registryPath = path.join(bundledRoot, "registry.bin")
+	try {
+		fs.accessSync(bundledRoot, fs.constants.W_OK)
+	} catch {
+		const userDir =
+			process.env.REIN_DATA_DIR ??
+			path.join(os.tmpdir(), `rein-${process.getuid?.() ?? "user"}`)
+		fs.mkdirSync(userDir, { recursive: true, mode: 0o700 })
+		registryPath = path.join(userDir, "gstreamer-registry.bin")
+	}
 
 	const env: Record<string, string> = {
 		GST_PLUGIN_PATH: pluginDir,
@@ -75,23 +112,27 @@ function bundledPaths(): GstPaths {
 
 	if (os.platform() === "win32") {
 		const existingPath = process.env.PATH ?? ""
-		env.PATH = `${binDir};${existingPath}`
+		env.PATH = `${binDir};${libDir};${existingPath}`
 	} else if (os.platform() === "linux") {
 		const existingLdPath = process.env.LD_LIBRARY_PATH ?? ""
 		env.LD_LIBRARY_PATH = existingLdPath
-			? `${binDir}:${existingLdPath}`
-			: binDir
+			? `${libDir}:${binDir}:${existingLdPath}`
+			: `${libDir}:${binDir}`
 	} else if (os.platform() === "darwin") {
 		const existingDyldPath = process.env.DYLD_LIBRARY_PATH ?? ""
-		const libDir = path.join(BUNDLED_GSTREAMER_ROOT, "lib")
 		env.DYLD_LIBRARY_PATH = existingDyldPath
 			? `${libDir}:${existingDyldPath}`
 			: libDir
 	}
 
+	const bundledInspect = path.join(binDir, GST_INSPECT)
+	const gstInspect = fs.existsSync(bundledInspect)
+		? bundledInspect
+		: GST_INSPECT
+
 	return {
 		gstLaunch: path.join(binDir, GST_LAUNCH),
-		gstInspect: path.join(binDir, GST_INSPECT),
+		gstInspect,
 		isBundled: true,
 		env,
 	}
@@ -107,9 +148,25 @@ function systemPaths(): GstPaths {
 }
 
 export function resolveGstPaths(): GstPaths {
-	if (hasBundledGstreamer()) {
-		logger.info(`Using bundled GStreamer at ${BUNDLED_GSTREAMER_ROOT}`)
-		return bundledPaths()
+	const config = loadServerConfig()
+
+	// Check if local bundled GStreamer is disabled via server-config.json
+	const useSystemDisabled =
+		config.useSystemGstreamer === true ||
+		config.useGlobalGstreamer === true ||
+		config.disableBundledGstreamer === true
+
+	if (useSystemDisabled) {
+		logger.info(
+			"Bundled GStreamer disabled in server-config.json — using system-installed GStreamer",
+		)
+		return systemPaths()
+	}
+
+	const bundledRoot = getBundledGstreamerRoot()
+	if (bundledRoot) {
+		logger.info(`Using bundled GStreamer at ${bundledRoot}`)
+		return bundledPaths(bundledRoot)
 	}
 
 	logger.info(
