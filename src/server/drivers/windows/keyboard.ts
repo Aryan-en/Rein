@@ -5,24 +5,27 @@
  * SendInput API. Supports both virtual-key based input and Unicode
  * character injection for reliable text entry across applications.
  */
-import { SendInput, INPUT_STRUCT_SIZE } from "./structs"
-import { KEYEVENTF_KEYUP, KEYEVENTF_UNICODE } from "./constants"
-import { INPUT_KEYBOARD } from "../../constants"
-import { VK_MAP } from "../keyMap"
+import { SendInput, INPUT_STRUCT_SIZE } from "./structs.ts"
+import { KEYEVENTF_KEYUP, KEYEVENTF_UNICODE } from "./constants.ts"
+import { INPUT_KEYBOARD } from "../../constants.ts"
+import { VK_MAP } from "../keyMap.ts"
 
 export class WindowsKeyboard {
-	injectKey(key: string): void {
+	injectKey(key: string, pos: string = ""): void {
 		const lowerKey = key.toLowerCase()
 		const vk = VK_MAP[lowerKey]
 
 		if (vk !== undefined) {
-			this.sendInput(2, [
-				{
+			const events: Array<Record<string, unknown>> = []
+			if (pos !== "RELEASE") {
+				events.push({
 					type: INPUT_KEYBOARD,
 					__pad: 0,
 					u: { ki: { wVk: vk, wScan: 0, dwFlags: 0, time: 0, dwExtraInfo: 0 } },
-				},
-				{
+				})
+			}
+			if (pos !== "HOLD") {
+				events.push({
 					type: INPUT_KEYBOARD,
 					__pad: 0,
 					u: {
@@ -34,8 +37,9 @@ export class WindowsKeyboard {
 							dwExtraInfo: 0,
 						},
 					},
-				},
-			])
+				})
+			}
+			this.sendInput(events.length, events)
 		} else if (key.length === 1) {
 			this.injectText(key)
 		} else {

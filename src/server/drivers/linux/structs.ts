@@ -41,6 +41,7 @@ let _open: KoffiFunc | null = null
 let _close: KoffiFunc | null = null
 let _write: KoffiFunc | null = null
 let _ioctl: KoffiFunc | null = null
+export let _dummyBuffer: Buffer | null = null
 
 function ensureLibc() {
 	if (!_libc) {

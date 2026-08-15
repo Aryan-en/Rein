@@ -42,7 +42,7 @@ export type PlatformInjector = {
 	injectMouseMove(dx: number, dy: number): void
 	injectMouseButton(button: "left" | "right" | "middle", isDown: boolean): void
 	injectMouseWheel(dx: number, dy: number): void
-	injectKey(key: string): void
+	injectKey(key: string, pos?: string): void
 	injectCombo(keys: string[]): void
 	injectText(text: string): void
 	injectTouch(contacts: NonNullable<InputMessage["contacts"]>): void

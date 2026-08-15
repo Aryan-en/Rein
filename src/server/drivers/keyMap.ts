@@ -75,6 +75,17 @@ export const VK_MAP: Record<string, number> = {
 	f12: 0x7b,
 	numlock: 0x90,
 	scrolllock: 0x91,
+	audiomute: 0xad,
+	volumemute: 0xad,
+	audiovoldown: 0xae,
+	volumedown: 0xae,
+	audiovolup: 0xaf,
+	volumeup: 0xaf,
+	audionext: 0xb0,
+	audioprev: 0xb1,
+	audiostop: 0xb2,
+	audioplay: 0xb3,
+	audiopause: 0xb3,
 }
 
 export const LINUX_KEY_MAP: Record<string, number> = {
@@ -186,6 +197,19 @@ export const LINUX_KEY_MAP: Record<string, number> = {
 	",": 0x33,
 	".": 0x34,
 	"/": 0x35,
+
+	// ---- Media keys (linux/input-event-codes.h) ----
+	audiomute: 0x71, // KEY_MUTE
+	volumemute: 0x71,
+	audiovoldown: 0x72, // KEY_VOLUMEDOWN
+	volumedown: 0x72,
+	audiovolup: 0x73, // KEY_VOLUMEUP
+	volumeup: 0x73,
+	audionext: 0xa3, // KEY_NEXTSONG
+	audioprev: 0xa5, // KEY_PREVIOUSSONG
+	audiostop: 0xa6, // KEY_STOPCD
+	audioplay: 0xa4, // KEY_PLAYPAUSE
+	audiopause: 0xa4, // KEY_PLAYPAUSE
 }
 
 export const MAC_KEY_MAP: Record<string, number> = {
@@ -304,6 +328,10 @@ export const MAC_KEY_MAP: Record<string, number> = {
 	volumeup: 0x48,
 	volumedown: 0x49,
 	mute: 0x4a,
+	audiomute: 0x4a,
+	volumemute: 0x4a,
+	audiovoldown: 0x49,
+	audiovolup: 0x48,
 	numpad0: 0x52,
 	numpad1: 0x53,
 	numpad2: 0x54,

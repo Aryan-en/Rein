@@ -214,19 +214,19 @@ export class LinuxInputInjector {
 
 		if (dy !== 0) {
 			// Positive dy = scroll down on trackpad
-			const amount = Math.round(-dy * invert * WHEEL_SCALE)
+			const amount = Math.round(dy * invert * WHEEL_SCALE)
 			writeEvent(fd, EV_REL, REL_WHEEL, amount)
 		}
 		if (dx !== 0) {
-			const amount = Math.round(dx * WHEEL_SCALE)
+			const amount = Math.round(dx * invert * WHEEL_SCALE)
 			writeEvent(fd, EV_REL, REL_HWHEEL, amount)
 		}
 		writeEvent(fd, EV_SYN, SYN_REPORT, 0)
 	}
 
 	// Keyboard
-	injectKey(key: string): void {
-		this.keyboard?.injectKey(key)
+	injectKey(key: string, pos?: string): void {
+		this.keyboard?.injectKey(key, pos ?? "")
 	}
 
 	injectCombo(keys: string[]): void {
@@ -260,12 +260,12 @@ export class LinuxInputInjector {
 		const touchOk = this.setupTouchDevice()
 
 		if (!mouseOk || !kbOk || !touchOk) {
-			console.error(
-				"[LinuxInputInjector] One or more devices failed to initialize",
-			)
+			const msg =
+				"One or more virtual uinput devices failed to initialize (check /dev/uinput permissions)"
+			console.error(`[LinuxInputInjector] ${msg}`)
 			this.destroy()
-			this.initialized = mouseOk
-			return
+			this.initialized = false
+			throw new Error(msg)
 		}
 
 		this.keyboard = new LinuxKeyboard(this.kbDev.fd)

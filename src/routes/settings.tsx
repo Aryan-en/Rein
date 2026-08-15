@@ -3,12 +3,41 @@ import QRCode from "qrcode"
 import { useEffect, useState, useRef } from "react"
 import { APP_CONFIG, THEMES } from "../config"
 import serverConfig from "../server-config.json"
+import pkg from "../../package.json"
+import { t } from "../utils/i18n"
 export const Route = createFileRoute("/settings")({
 	component: SettingsPage,
 })
 
+const copyWithFallback = (text: string) => {
+	const textArea = document.createElement("textarea")
+	textArea.value = text
+	textArea.setAttribute("readonly", "")
+	textArea.style.position = "absolute"
+	textArea.style.left = "-9999px"
+
+	document.body.appendChild(textArea)
+	textArea.select()
+	textArea.setSelectionRange(0, text.length)
+
+	try {
+		return document.execCommand("copy")
+	} finally {
+		document.body.removeChild(textArea)
+	}
+}
+
 function SettingsPage() {
 	const [ip, setIp] = useState("")
+	const [copied, setCopied] = useState(false)
+	const [copyError, setCopyError] = useState("")
+	const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+	useEffect(() => {
+		return () => {
+			if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+		}
+	}, [])
 	const [frontendPort, setFrontendPort] = useState("")
 	const [originalPort] = useState(String(serverConfig.frontendPort))
 	const serverConfigChanged =
@@ -100,7 +129,11 @@ function SettingsPage() {
 	// Auto-generate token on settings page load (localhost only)
 	useEffect(() => {
 		if (typeof window === "undefined") return
-		if (window.location.hostname !== "localhost") return
+		const isLocal =
+			window.location.hostname === "localhost" ||
+			window.location.hostname === "127.0.0.1" ||
+			window.location.hostname === "::1"
+		if (!isLocal) return
 
 		let isMounted = true
 
@@ -135,10 +168,14 @@ function SettingsPage() {
 			.catch((e) => console.error("QR Error:", e))
 	}, [ip, shareUrl])
 
-	// Effect: Auto-detect LAN IP from Server (only if on localhost)
+	// Effect: Auto-detect LAN IP from Server (only if on loopback/localhost)
 	useEffect(() => {
 		if (typeof window === "undefined") return
-		if (window.location.hostname !== "localhost") return
+		const isLocal =
+			window.location.hostname === "localhost" ||
+			window.location.hostname === "127.0.0.1" ||
+			window.location.hostname === "::1"
+		if (!isLocal) return
 
 		fetch("/api/host/ip")
 			.then((res) => res.json())
@@ -356,17 +393,56 @@ function SettingsPage() {
 									</div>
 								)}
 
-								<a
-									className="link link-primary mt-2 break-all text-lg font-mono bg-base-100 px-4 py-2 rounded-lg inline-block max-w-full overflow-hidden text-ellipsis"
-									href={shareUrl}
-								>
-									{shareUrl.replace(`${protocol}//`, "")}
-								</a>
+								<div className="flex flex-col gap-2 mt-2 w-full px-4 items-center">
+									<button
+										type="button"
+										className="border-0 link-primary link text-lg font-mono bg-base-100 px-4 py-2 rounded-lg inline-block max-w-full overflow-hidden text-ellipsis"
+										onClick={async () => {
+											setCopyError("")
+											try {
+												if (
+													window.isSecureContext &&
+													navigator.clipboard?.writeText
+												) {
+													await navigator.clipboard.writeText(shareUrl)
+												} else if (!copyWithFallback(shareUrl)) {
+													throw new Error("Clipboard copy failed")
+												}
+
+												setCopied(true)
+												if (copyTimerRef.current)
+													clearTimeout(copyTimerRef.current)
+												copyTimerRef.current = setTimeout(() => {
+													setCopied(false)
+													copyTimerRef.current = null
+												}, 2000)
+											} catch (err) {
+												console.error("Failed to copy URL:", err)
+												if (copyTimerRef.current) {
+													clearTimeout(copyTimerRef.current)
+													copyTimerRef.current = null
+												}
+												setCopied(false)
+												setCopyError(t("settings", "copyFailed"))
+											}
+										}}
+									>
+										{shareUrl.replace(`${protocol}//`, "")}
+									</button>
+									<p className={`${copied ? "visible" : "invisible"}`}>
+										{t("settings", "copied")}
+									</p>
+									{copyError && (
+										<p className="text-error text-xs text-center max-w-xs">
+											{copyError}
+										</p>
+									)}
+								</div>
 							</div>
 						</div>
 
 						<div className="text-xs text-center opacity-50 pt-8 pb-8">
-							Rein Remote v1.0.0
+							{t("settings", "appVersion", { version: pkg.version })}
 						</div>
 					</div>
 				</div>

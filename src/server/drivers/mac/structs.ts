@@ -23,6 +23,9 @@ let _CGEventCreateKeyboardEvent: koffi.KoffiFunction | null = null
 let _CGEventCreateScrollWheelEvent: koffi.KoffiFunction | null = null
 let _CGEventPost: koffi.KoffiFunction | null = null
 let _CFRelease: koffi.KoffiFunction | null = null
+let _CGEventSetIntegerValueField: koffi.KoffiFunction | null = null
+export let _CGEventSetDoubleValueField: koffi.KoffiFunction | null = null
+export let _CGEventGetLocation: koffi.KoffiFunction | null = null
 
 function ensureFunctions() {
 	const lib = cg()
@@ -87,4 +90,60 @@ export function postScrollEvent(deltaX: number, deltaY: number): void {
 	if (!ref) return
 	_CGEventPost?.(0, ref)
 	_CFRelease?.(ref)
+}
+export const NX_KEYTYPE_PLAY = 16
+export const NX_KEYTYPE_NEXT = 17
+export const NX_KEYTYPE_PREVIOUS = 18
+export const NX_KEYTYPE_FAST = 19
+export const NX_KEYTYPE_REWIND = 20
+
+const NX_SYSDEFINED = 14 // NSEventTypeSystemDefined
+const NX_SUBTYPE_AUX = 8 // NX_SUBTYPE_AUX_CONTROL_BUTTONS
+
+let _CGEventCreate: koffi.KoffiFunction | null = null
+let _CGEventSetType: koffi.KoffiFunction | null = null
+
+function ensureMediaFunctions() {
+	ensureFunctions()
+	if (!_CGEventCreate) {
+		const lib = cg()
+		_CGEventCreate = lib.func("void * CGEventCreate(void *)")
+		_CGEventSetType = lib.func("void CGEventSetType(void *, uint32)")
+	}
+}
+
+/**
+ * Post a macOS media key event (play, next, prev, etc.).
+ * `keyType` is one of the NX_KEYTYPE_* constants above.
+ */
+export function postMediaKeyEvent(keyType: number): void {
+	ensureMediaFunctions()
+	if (
+		!_CGEventCreate ||
+		!_CGEventSetType ||
+		!_CGEventSetIntegerValueField ||
+		!_CGEventPost ||
+		!_CFRelease
+	)
+		return
+
+	// Key-down: data = (keyType << 16) | (0xa << 8)   [flags=0xa = key-down]
+	const downData = (keyType << 16) | (0x0a << 8)
+	const downRef = _CGEventCreate(null) as bigint | number | null
+	if (!downRef) return
+	_CGEventSetType(downRef, NX_SYSDEFINED)
+	_CGEventSetIntegerValueField(downRef, 131, NX_SUBTYPE_AUX) // field 131 = eventSubtype
+	_CGEventSetIntegerValueField(downRef, 132, downData) // field 132 = eventData1
+	_CGEventPost(0, downRef)
+	_CFRelease(downRef)
+
+	// Key-up: data = (keyType << 16) | (0xb << 8)     [flags=0xb = key-up]
+	const upData = (keyType << 16) | (0x0b << 8)
+	const upRef = _CGEventCreate(null) as bigint | number | null
+	if (!upRef) return
+	_CGEventSetType(upRef, NX_SYSDEFINED)
+	_CGEventSetIntegerValueField(upRef, 131, NX_SUBTYPE_AUX)
+	_CGEventSetIntegerValueField(upRef, 132, upData)
+	_CGEventPost(0, upRef)
+	_CFRelease(upRef)
 }

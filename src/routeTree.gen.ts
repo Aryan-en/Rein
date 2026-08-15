@@ -9,13 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TrackpadRouteImport } from './routes/trackpad'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DebugRouteImport } from './routes/debug'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TrackpadRouteImport } from './routes/trackpad'
 
-const TrackpadRoute = TrackpadRouteImport.update({
-  id: '/trackpad',
-  path: '/trackpad',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DebugRoute = DebugRouteImport.update({
+  id: '/debug',
+  path: '/debug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -23,49 +29,60 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const TrackpadRoute = TrackpadRouteImport.update({
+  id: '/trackpad',
+  path: '/trackpad',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/trackpad': typeof TrackpadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/trackpad': typeof TrackpadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/trackpad': typeof TrackpadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/trackpad'
+  fullPaths: '/' | '/debug' | '/settings' | '/trackpad'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/trackpad'
-  id: '__root__' | '/' | '/settings' | '/trackpad'
+  to: '/' | '/debug' | '/settings' | '/trackpad'
+  id: '__root__' | '/' | '/debug' | '/settings' | '/trackpad'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DebugRoute: typeof DebugRoute
   SettingsRoute: typeof SettingsRoute
   TrackpadRoute: typeof TrackpadRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/trackpad': {
-      id: '/trackpad'
-      path: '/trackpad'
-      fullPath: '/trackpad'
-      preLoaderRoute: typeof TrackpadRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/debug': {
+      id: '/debug'
+      path: '/debug'
+      fullPath: '/debug'
+      preLoaderRoute: typeof DebugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -75,11 +92,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/trackpad': {
+      id: '/trackpad'
+      path: '/trackpad'
+      fullPath: '/trackpad'
+      preLoaderRoute: typeof TrackpadRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DebugRoute: DebugRoute,
   SettingsRoute: SettingsRoute,
   TrackpadRoute: TrackpadRoute,
 }

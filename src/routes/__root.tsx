@@ -12,9 +12,11 @@ import {
 	ConnectionProvider,
 	useConnection,
 } from "../contexts/ConnectionProvider"
+import { DebugProvider } from "../contexts/DebugContext"
 
 export const Route = createRootRoute({
-	component: AppWithConnection,
+	shellComponent: AppProviders,
+	component: RootComponent,
 	errorComponent: (props) => {
 		return (
 			<RootDocument>
@@ -25,10 +27,10 @@ export const Route = createRootRoute({
 	notFoundComponent: () => <div>Not Found</div>,
 })
 
-function AppWithConnection() {
+function AppProviders({ children }: { children: React.ReactNode }) {
 	return (
 		<ConnectionProvider>
-			<RootComponent />
+			<DebugProvider>{children}</DebugProvider>
 		</ConnectionProvider>
 	)
 }

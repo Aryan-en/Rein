@@ -11,6 +11,7 @@ interface ScreenMirrorProps {
 	handlers: React.HTMLAttributes<HTMLDivElement>
 	videoStream: MediaStream | null
 	trackActive: boolean
+	connecting: boolean
 	status: "connecting" | "connected" | "disconnected"
 }
 
@@ -26,6 +27,7 @@ export const ScreenMirror = ({
 	handlers,
 	videoStream,
 	trackActive,
+	connecting,
 	status,
 }: ScreenMirrorProps) => {
 	const videoElementRef = useRef<HTMLVideoElement | null>(null)
@@ -44,6 +46,7 @@ export const ScreenMirror = ({
 	}, [videoStream])
 
 	const getWaitingText = () => {
+		if (connecting) return t("screenMirror", "establishingConnection")
 		switch (status) {
 			case "disconnected":
 				return t("screenMirror", "disconnected")
@@ -55,6 +58,7 @@ export const ScreenMirror = ({
 	}
 
 	const getSubText = () => {
+		if (connecting) return t("screenMirror", "negotiatingWebRtc")
 		switch (status) {
 			case "disconnected":
 				return t("screenMirror", "checkNetwork")

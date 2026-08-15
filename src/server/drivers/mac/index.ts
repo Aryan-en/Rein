@@ -125,16 +125,16 @@ export class MacInputInjector {
 		const invert = this.config.invertScroll ? -1 : 1
 
 		//scroll: positive deltaY = scroll up (content moves down).
-		const cgDy = dy !== 0 ? Math.round(-dy * invert * WHEEL_SCALE) : 0
-		const cgDx = dx !== 0 ? Math.round(dx * WHEEL_SCALE) : 0
+		const cgDy = dy !== 0 ? Math.round(dy * invert * WHEEL_SCALE) : 0
+		const cgDx = dx !== 0 ? Math.round(dx * invert * WHEEL_SCALE) : 0
 
 		postScrollEvent(cgDx, cgDy)
 	}
 
 	// Keyboard
 
-	injectKey(key: string): void {
-		this.keyboard.injectKey(key)
+	injectKey(key: string, pos?: string): void {
+		this.keyboard.injectKey(key, pos ?? "")
 	}
 
 	injectCombo(keys: string[]): void {

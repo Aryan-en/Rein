@@ -223,6 +223,37 @@ export const useTrackpadGesture = (
 		}
 	}
 
+	const handleTouchCancel = (e: React.TouchEvent) => {
+		const touches = e.changedTouches
+
+		// Remove all cancelled touches from tracking
+		for (let i = 0; i < touches.length; i++) {
+			ongoingTouches.current.delete(touches[i].identifier)
+		}
+
+		// If no touches remain, fully reset the gesture state
+		if (ongoingTouches.current.size === 0) {
+			setIsTracking(false)
+			moved.current = false
+			releasedCount.current = 0
+			lastPinchDist.current = null
+			pinching.current = false
+
+			if (dragging.current) {
+				dragging.current = false
+				send({ type: "click", button: "left", press: false })
+			}
+
+			if (draggingTimeout.current) {
+				clearTimeout(draggingTimeout.current)
+				draggingTimeout.current = null
+			}
+		} else if (ongoingTouches.current.size < 2) {
+			lastPinchDist.current = null
+			pinching.current = false
+		}
+	}
+
 	// Cleanup: clear any pending drag timeout on unmount
 	useEffect(() => {
 		return () => {
@@ -239,6 +270,7 @@ export const useTrackpadGesture = (
 			onTouchStart: handleTouchStart,
 			onTouchMove: handleTouchMove,
 			onTouchEnd: handleTouchEnd,
+			onTouchCancel: handleTouchCancel,
 		},
 	}
 }

@@ -22,12 +22,17 @@ export class LinuxKeyboard {
 		this.fd = fd
 	}
 
-	injectKey(key: string): void {
+	injectKey(key: string, pos: string): void {
 		const code = LINUX_KEY_MAP[key.toLowerCase()]
 
 		if (code !== undefined) {
-			this.sendKeyEvent(code, KEY_PRESS)
-			this.sendKeyEvent(code, KEY_RELEASE)
+			if (pos !== "RELEASE") {
+				this.sendKeyEvent(code, KEY_PRESS)
+			}
+			if (pos !== "HOLD") {
+				this.sendKeyEvent(code, KEY_RELEASE)
+			}
+			this.sync()
 		} else if (key.length === 1) {
 			this.injectText(key)
 		} else {

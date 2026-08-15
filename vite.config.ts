@@ -3,9 +3,21 @@ import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { nitro } from "nitro/vite"
 import { defineConfig } from "vite"
-import serverConfig from "./src/server-config.json"
-import { attachSignalingRoutes } from "./src/server/server"
+import serverConfig from "./src/server-config.json" with { type: "json" }
+import { attachSignalingRoutes } from "./src/server/server.ts"
+import { printWelcome } from "./src/utils/welcome.ts"
 import react from "@vitejs/plugin-react"
+// biome-ignore lint/suspicious/noExplicitAny: Vite server instance
+const wireServer = (server: any) => {
+	attachSignalingRoutes(server)
+	server.httpServer?.once("listening", () => {
+		const addr = server.httpServer?.address()
+		const port =
+			addr && typeof addr === "object" ? addr.port : serverConfig.frontendPort
+		printWelcome(port)
+	})
+}
+
 const config = defineConfig({
 	base: "/",
 	resolve: {
@@ -16,19 +28,16 @@ const config = defineConfig({
 	plugins: [
 		{
 			name: "rein-server",
-			async configureServer(server) {
-				const httpServer = server.httpServer
-				if (!httpServer) return
-				attachSignalingRoutes(httpServer)
-			},
-			async configurePreviewServer(server) {
-				const httpServer = server.httpServer
-				if (!httpServer) return
-				attachSignalingRoutes(httpServer)
-			},
+			configureServer: wireServer,
+			configurePreviewServer: wireServer,
 		},
 		devtools(),
-		nitro(),
+		nitro({
+			plugins: ["./src/server/nitro-plugin"],
+			rollupConfig: {
+				external: ["koffi", "x11"],
+			},
+		}),
 		tanstackStart(),
 		react({
 			babel: {
@@ -37,7 +46,6 @@ const config = defineConfig({
 		}),
 	],
 	ssr: {
-		external: ["node-datachannel", "dbus-next", "eventsource"],
 		noExternal: ["tailwindcss", "@tailwindcss/postcss"],
 	},
 	server: {
@@ -45,9 +53,7 @@ const config = defineConfig({
 		port: serverConfig.frontendPort,
 	},
 	build: {
-		rollupOptions: {
-			external: ["node-datachannel"],
-		},
+		rollupOptions: {},
 	},
 })
 

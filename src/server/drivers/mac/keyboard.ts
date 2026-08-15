@@ -5,15 +5,40 @@
  * keyboard events. Supports both key-code based input and Unicode
  * character injection for characters not present in the standard key map.
  */
-import { postKeyEvent } from "./structs.ts"
+import {
+	postKeyEvent,
+	postMediaKeyEvent,
+	NX_KEYTYPE_PLAY,
+	NX_KEYTYPE_NEXT,
+	NX_KEYTYPE_PREVIOUS,
+} from "./structs.ts"
 import { MAC_KEY_MAP } from "../keyMap.ts"
 import { resolveChar } from "../utils.ts"
+
+// Media transport keys that require NX_SYSDEFINED events
+const MEDIA_KEY_MAP: Record<string, number> = {
+	audioplay: NX_KEYTYPE_PLAY,
+	audiopause: NX_KEYTYPE_PLAY,
+	audionext: NX_KEYTYPE_NEXT,
+	audioprev: NX_KEYTYPE_PREVIOUS,
+	audiostop: NX_KEYTYPE_PLAY,
+}
+
 export class MacKeyboard {
-	injectKey(key: string): void {
-		const code = MAC_KEY_MAP[key.toLowerCase()]
+	injectKey(key: string, pos: string): void {
+		const lowerKey = key.toLowerCase()
+
+		// Media transport keys need NX_SYSDEFINED events, not keyboard keycodes
+		const mediaType = MEDIA_KEY_MAP[lowerKey]
+		if (mediaType !== undefined) {
+			postMediaKeyEvent(mediaType)
+			return
+		}
+
+		const code = MAC_KEY_MAP[lowerKey]
 		if (code !== undefined) {
-			postKeyEvent(code, true)
-			postKeyEvent(code, false)
+			if (pos !== "RELEASE") postKeyEvent(code, true)
+			if (pos !== "HOLD") postKeyEvent(code, false)
 		} else if (key.length === 1) {
 			this.injectText(key)
 		} else {

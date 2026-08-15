@@ -7,7 +7,7 @@
  * mouse, keyboard, touch, clipboard, and gesture interactions.
  */
 import os from "node:os"
-import { applyMotion } from "./drivers/utils"
+import { applyMotion } from "./drivers/utils.ts"
 import {
 	DEFAULT_SCREEN_HEIGHT,
 	DEFAULT_SCREEN_WIDTH,
@@ -199,9 +199,9 @@ export class InputHandler {
 					Math.sign(delta) * Math.min(Math.abs(delta) * 0.5, MAX_ZOOM_STEP)
 				const amount = Math.round(-scaled)
 				if (amount !== 0) {
-					this.injector.injectKey("control")
+					this.injector.injectKey("control", "HOLD")
 					this.injector.injectMouseWheel(0, amount)
-					this.injector.injectKey("control")
+					this.injector.injectKey("control", "RELEASE")
 				}
 				break
 			}

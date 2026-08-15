@@ -1,7 +1,9 @@
 {
 	"main": "electron/main.cjs",
-	"name": "app",
-	"version": "1.0.0",
+	"name": "Rein",
+	"version": "0.1.0",
+	"description": "Rein Desktop Streaming Server",
+	"author": "AOSSIE",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -16,7 +18,8 @@
 		"test": "vitest run",
 		"typecheck": "tsc --noEmit",
 		"check": "biome check .",
-		"check:fix": "biome check . --write"
+		"check:fix": "biome check . --write",
+		"postinstall": "node scripts/install-gstreamer.js"
 	},
 	"dependencies": {
 		"@tanstack/react-router": "^1.169.2",
@@ -29,11 +32,12 @@
 		"lucide-react": "^0.561.0",
 		"nitro": "^3.0.260429-beta",
 		"nitro-nightly": "^3.0.1-20260501-164602-aee73f19",
-		"node-datachannel": "^0.32.3",
 		"qrcode": "^1.5.4",
 		"react": "^19.2.5",
 		"react-dom": "^19.2.5",
 		"react-icons": "^5.5.0",
+		"recharts": "^3.10.0",
+		"werift": "^0.23.0",
 		"winston": "^3.19.0",
 		"ws": "^8.18.0"
 	},
@@ -75,35 +79,45 @@
 		"asar": true,
 		"asarUnpack": [
 			".output/**/*",
-			"node_modules/@nut-tree-fork/**/*"
+			"node_modules/koffi/**/*",
+			"node_modules/tslib/**/*"
 		],
 		"extraResources": [
 			{
-				"from": ".output",
-				"to": ".output"
+				"from": "bin",
+				"to": "bin"
+			},
+			{
+				"from": "src/server-config.json",
+				"to": "src/server-config.json"
 			}
 		],
 		"files": [
 			".output/**/*",
 			"electron/**/*",
-			"package.json"
+			"package.json",
+			"node_modules/koffi/**/*",
+			"node_modules/tslib/**/*",
+			"src/server-config.json"
 		],
-		"npmRebuild": true,
+		"npmRebuild": false,
 		"linux": {
-			"target": "AppImage"
+			"target": "AppImage",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		},
 		"win": {
-			"target": "portable"
+			"target": "nsis",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		},
 		"mac": {
-			"target": "dmg"
+			"target": "dmg",
+			"icon": "brand/Media-Assets/Icons/Icon512.png"
 		}
 	},
 	"allowScripts": {
-		"electron@40.10.5": true,
 		"electron-winstaller@5.4.0": true,
-		"esbuild@0.28.1": true,
-		"koffi@2.16.2": true,
-		"node-datachannel@0.32.3": true
+		"esbuild@0.28.2": true,
+		"electron@40.10.6": true,
+		"koffi@2.16.3": true
 	}
 }
