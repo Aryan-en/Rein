@@ -41,7 +41,6 @@ let _open: KoffiFunc | null = null
 let _close: KoffiFunc | null = null
 let _write: KoffiFunc | null = null
 let _ioctl: KoffiFunc | null = null
-let _dummyBuffer: Buffer | null = null
 
 function ensureLibc() {
 	if (!_libc) {
@@ -53,7 +52,6 @@ function ensureLibc() {
 			"int64 write(int fd, const input_event *buf, size_t count)",
 		)
 		_ioctl = _libc.func("int ioctl(int fd, unsigned long request, ...)")
-		_dummyBuffer = Buffer.alloc(1)
 	}
 }
 

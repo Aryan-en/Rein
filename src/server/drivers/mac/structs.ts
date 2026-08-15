@@ -23,9 +23,6 @@ let _CGEventCreateKeyboardEvent: koffi.KoffiFunction | null = null
 let _CGEventCreateScrollWheelEvent: koffi.KoffiFunction | null = null
 let _CGEventPost: koffi.KoffiFunction | null = null
 let _CFRelease: koffi.KoffiFunction | null = null
-let _CGEventSetIntegerValueField: koffi.KoffiFunction | null = null
-let _CGEventSetDoubleValueField: koffi.KoffiFunction | null = null
-let _CGEventGetLocation: koffi.KoffiFunction | null = null
 
 function ensureFunctions() {
 	const lib = cg()
@@ -47,19 +44,6 @@ function ensureFunctions() {
 
 		// void CFRelease(CFTypeRef cf)
 		_CFRelease = lib.func("void CFRelease(void *)")
-
-		// void CGEventSetIntegerValueField(CGEventRef, CGEventField, int64)
-		_CGEventSetIntegerValueField = lib.func(
-			"void CGEventSetIntegerValueField(void *, uint32, int64)",
-		)
-
-		// void CGEventSetDoubleValueField(CGEventRef, CGEventField, double)
-		_CGEventSetDoubleValueField = lib.func(
-			"void CGEventSetDoubleValueField(void *, uint32, double)",
-		)
-
-		// CGPoint CGEventGetLocation(CGEventRef)
-		_CGEventGetLocation = lib.func("CGPoint CGEventGetLocation(void *)")
 	}
 }
 
