@@ -45,10 +45,6 @@ function TrackpadPage() {
 	const [extraKeysVisible, setExtraKeysVisible] = useState(true)
 	const [screenShareConsented, setScreenShareConsented] = useState(false)
 	const { status, send, sendCombo } = useRemoteConnection()
-	const { trackActive, videoStream, error, errorHandle, reconnect } =
-		useWebRtcStream({
-			token: screenShareConsented ? token : null,
-		})
 	const {
 		trackActive,
 		videoStream,
@@ -57,7 +53,7 @@ function TrackpadPage() {
 		connecting,
 		reconnect,
 	} = useWebRtcStream({
-		token,
+		token: screenShareConsented ? token : null,
 	})
 
 	// Send input actions safely over WebRTC DataChannels
