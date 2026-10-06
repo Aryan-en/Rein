@@ -17,7 +17,7 @@ const commonOptions = {
 	bundle: true,
 	platform: "node",
 	target: "node18",
-	external: ["koffi"],
+	external: ["koffi", "@imxade/inject", "@imxade/inject/*"],
 	sourcemap: true,
 }
 

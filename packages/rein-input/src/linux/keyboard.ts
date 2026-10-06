@@ -1,13 +1,13 @@
-import { writeEvent } from "./structs"
-import { EV_SYN, EV_KEY, SYN_REPORT, KEY_PRESS, KEY_RELEASE } from "./constants"
+import type { UinputDevice } from "@imxade/inject/linux"
+import { EV_KEY, KEY_PRESS, KEY_RELEASE } from "./constants"
 import { LINUX_KEY_MAP } from "../keyMap"
 import { resolveChar } from "../utils"
 
 export class LinuxKeyboard {
-	private fd: number
+	private device: UinputDevice
 
-	constructor(fd: number) {
-		this.fd = fd
+	constructor(device: UinputDevice) {
+		this.device = device
 	}
 
 	injectKey(key: string, pos: string): void {
@@ -80,10 +80,10 @@ export class LinuxKeyboard {
 	}
 
 	private sendKeyEvent(code: number, value: number): void {
-		writeEvent(this.fd, EV_KEY, code, value)
+		this.device.emit(EV_KEY, code, value)
 	}
 
 	private sync(): void {
-		writeEvent(this.fd, EV_SYN, SYN_REPORT, 0)
+		this.device.sync()
 	}
 }
